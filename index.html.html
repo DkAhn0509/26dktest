@@ -1,0 +1,1533 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>빛과 별 탐사대</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<script>
+/* =====================================================================
+   설정: 아래 따옴표 안에 Code.gs 웹 앱 주소(…/exec)를 붙여 넣으세요.
+   비워 두면 "체험 모드"로 동작합니다(기록이 이 기기에만 저장됨).
+   ===================================================================== */
+window.API_URL = "";
+</script>
+<style>
+/* Layout: one-screen landscape cockpit. The side-scroll world fills the canvas, a thin HUD strip rides on top,
+   thumb pads sit in the bottom corners, and each mission console slides over as a two-pane panel (experiment left, mission right). */
+:root{
+  color-scheme:dark;
+  --space:#0b1030; --deep:#070b24; --hull:#151b45; --hull2:#1f2760; --line:#343e86;
+  --glass:rgba(21,27,69,.88);
+  --ink:#eef1ff; --dim:#a9b0dc;
+  --photon:#ffd447; --r:#ff5468; --g:#3fe08a; --b:#5a93ff;
+  --display:'Do Hyeon','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  --body:'IBM Plex Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+}
+html,body{height:100%}
+body{background:var(--space);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box}
+h1,h2,h3,p{margin:0}
+h1,h2,h3{font-family:var(--display);font-weight:400;text-wrap:balance}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--photon);outline-offset:2px}
+#app{position:relative;height:100%;overflow:hidden}
+#game{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.screen{position:absolute;inset:0;overflow-y:auto;padding-block:16px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  background:radial-gradient(110% 70% at 85% 0%,var(--hull2),transparent 62%),var(--space)}
+.btn{font-family:var(--display);font-size:20px;border:0;border-radius:12px;padding:10px 22px;min-height:48px;
+  background:var(--photon);color:var(--deep)}
+.btn:active{transform:translateY(2px)}
+.btn.ghost{background:transparent;color:var(--ink);border:2px solid var(--line)}
+.btn.small{font-size:16px;min-height:40px;padding:6px 14px}
+.btn[disabled]{opacity:.4}
+
+/* title */
+#title{display:flex;align-items:center;justify-content:center}
+.titlebox{display:grid;grid-template-columns:auto minmax(0,440px);gap:40px;align-items:center}
+.rgb{position:relative;width:230px;height:220px;isolation:isolate;background:var(--deep);border-radius:50%}
+.rgb i{position:absolute;width:120px;height:120px;border-radius:50%;mix-blend-mode:screen}
+.rgb i:nth-child(1){background:#ff0000;left:55px;top:18px}
+.rgb i:nth-child(2){background:#00ff00;left:22px;top:76px}
+.rgb i:nth-child(3){background:#0000ff;left:88px;top:76px}
+.titlecopy{display:flex;flex-direction:column;gap:14px}
+.eyebrow{font-size:13px;letter-spacing:.14em;color:var(--photon)}
+#title h1{font-size:64px;line-height:1.02}
+.titlecopy ul{margin:0;padding-left:18px;color:var(--dim)}
+.nick{display:flex;flex-direction:column;gap:4px}
+.nick input{font:inherit;font-size:17px;color:var(--ink);background:var(--deep);border:2px solid var(--line);border-radius:10px;
+  padding:10px 12px;min-height:46px;-webkit-user-select:text;user-select:text}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.rot{display:none;color:var(--photon);font-size:13px}
+@media (orientation:portrait){.rot{display:block}}
+@media (max-width:720px){.titlebox{grid-template-columns:1fr;gap:18px;justify-items:start}.rgb{width:150px;height:144px}
+  .rgb i{width:78px;height:78px}.rgb i:nth-child(1){left:36px;top:12px}.rgb i:nth-child(2){left:14px;top:50px}.rgb i:nth-child(3){left:58px;top:50px}
+  #title h1{font-size:44px}#title{align-items:flex-start}}
+
+/* map */
+.maphead{display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.crew{display:flex;flex-direction:column;gap:2px;min-width:0}
+.crew h2{font-size:28px}
+.xpbar{width:min(320px,70vw);height:10px;border-radius:5px;background:var(--deep);border:1px solid var(--line);overflow:hidden}
+.xpbar b{display:block;height:100%;background:linear-gradient(90deg,var(--r),var(--photon),var(--g),var(--b))}
+.stats{display:flex;gap:18px;font-variant-numeric:tabular-nums}
+.stats div{display:flex;flex-direction:column}
+.stats span{font-size:12px;color:var(--dim);letter-spacing:.06em}
+.stats strong{font-family:var(--display);font-weight:400;font-size:26px;color:var(--photon)}
+.tabs{display:flex;gap:6px;margin-block:14px 12px;border-bottom:2px solid var(--line)}
+.tabs button{font-family:var(--display);font-size:19px;background:none;border:0;padding:8px 16px;color:var(--dim);border-bottom:3px solid transparent;margin-bottom:-2px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--photon)}
+.world{margin-bottom:18px}
+.world h3{font-size:21px;margin-bottom:8px}
+.world h3 small{font-family:var(--body);font-size:13px;color:var(--dim);margin-left:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.stage{display:flex;flex-direction:column;gap:2px;text-align:left;background:var(--hull);border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-height:112px}
+.stage .no{font-size:12px;color:var(--dim);letter-spacing:.08em}
+.stage .nm{font-family:var(--display);font-size:21px;line-height:1.15}
+.stage .pl{font-size:13px;color:var(--dim)}
+.stage .st{margin-top:auto;font-size:19px;letter-spacing:2px;color:var(--photon)}
+.stage .st em{font-style:normal;color:var(--line)}
+.stage.locked{opacity:.45}
+.stage.locked .st{font-size:13px;letter-spacing:0;color:var(--dim)}
+.badge{display:flex;gap:12px;align-items:center;background:var(--hull);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.medal{flex:none;width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-size:22px;
+  background:var(--deep);color:var(--line);border:3px solid var(--line)}
+.badge.on .medal{color:var(--deep);border-color:var(--ink);background:conic-gradient(from 210deg,var(--r),var(--photon),var(--g),var(--b),var(--r))}
+.badge:not(.on){opacity:.6}
+.badge strong{display:block;font-family:var(--display);font-weight:400;font-size:18px}
+.badge span{font-size:13px;color:var(--dim)}
+.card{background:var(--hull);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.card h4{margin:0 0 4px;font-family:var(--display);font-weight:400;font-size:19px}
+.card ul{margin:0;padding-left:18px;font-size:14px}
+.card.locked{color:var(--dim)}
+.mapfoot{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px;color:var(--dim);font-size:13px}
+
+/* hud + pads */
+#hud{position:absolute;top:0;left:0;right:0;display:flex;gap:8px;align-items:center;padding-block:10px;pointer-events:none;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-top:calc(10px + env(safe-area-inset-top,0px))}
+#hud>*{pointer-events:auto}
+.chip{background:var(--glass);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.chip b{font-family:var(--display);font-weight:400;font-size:18px;color:var(--photon)}
+#hudStage{font-family:var(--display);font-size:18px;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.spacer{flex:1}
+.pad{position:absolute;bottom:calc(18px + env(safe-area-inset-bottom,0px));display:flex;gap:14px;align-items:flex-end}
+.pad.l{left:max(18px,env(safe-area-inset-left,0px))}
+.pad.r{right:max(18px,env(safe-area-inset-right,0px))}
+.pad button{width:84px;height:84px;border-radius:50%;border:2px solid var(--line);background:var(--glass);font-family:var(--display);font-size:22px;touch-action:none}
+.pad button:active,.pad button.down{background:var(--hull2);border-color:var(--photon)}
+.pad .jump{width:100px;height:100px;border-color:var(--b)}
+.pad .act{border-color:var(--photon);color:var(--photon);animation:pulse 1s infinite alternate}
+@keyframes pulse{to{box-shadow:0 0 0 8px rgba(255,212,71,.18)}}
+@media (prefers-reduced-motion:reduce){.pad .act{animation:none}}
+@media (max-width:520px){.pad button{width:64px;height:64px;font-size:18px}.pad .jump{width:76px;height:76px}.chip.opt{display:none}}
+
+/* sim console */
+#sim{background:var(--space)}
+.simwrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,350px);gap:14px;height:100%}
+#simBox{position:relative;background:var(--deep);border:1px solid var(--line);border-radius:16px;overflow:hidden;min-height:240px}
+#simCanvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#simRead{position:absolute;left:12px;bottom:10px;right:12px;font-family:var(--display);font-size:19px;color:var(--photon);pointer-events:none}
+.simside{display:flex;flex-direction:column;gap:10px;min-width:0;overflow-y:auto}
+.simtop{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.simtop h2{font-size:24px}
+.dots{display:flex;gap:6px}
+.dots i{width:26px;height:8px;border-radius:4px;background:var(--line)}
+.dots i.done{background:var(--g)}.dots i.now{background:var(--photon)}
+#simText{font-size:16px;font-weight:500}
+#simControls{display:flex;flex-direction:column;gap:10px}
+.ctl{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;align-items:center;background:var(--hull);border:1px solid var(--line);border-radius:12px;padding:8px 12px}
+.ctl label,.ctl .lab{font-size:13px;color:var(--dim)}
+.ctl output{font-family:var(--display);font-size:19px;color:var(--photon);font-variant-numeric:tabular-nums}
+.ctl input[type=range]{grid-column:1/-1;width:100%;height:36px;accent-color:var(--photon);touch-action:pan-y}
+.seg{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}
+.seg button{flex:1 1 auto;min-height:44px;border-radius:10px;border:2px solid var(--line);background:var(--deep);padding:4px 10px;font-weight:500}
+.seg button[aria-pressed="true"]{border-color:var(--photon);background:var(--hull2)}
+.seg button.tr[aria-pressed="true"]{border-color:var(--r);color:var(--r)}
+.seg button.tg[aria-pressed="true"]{border-color:var(--g);color:var(--g)}
+.seg button.tb[aria-pressed="true"]{border-color:var(--b);color:var(--b)}
+#simOptions{display:flex;flex-direction:column;gap:8px}
+#simOptions button{text-align:left;min-height:46px;border-radius:12px;border:2px solid var(--line);background:var(--hull);padding:8px 14px;font-weight:500}
+#simOptions button.wrong{border-color:var(--r);opacity:.5}
+#simOptions button.right{border-color:var(--g);color:var(--g)}
+#simFeedback{border-radius:12px;padding:10px 12px;font-size:14px;border:1px solid var(--line);background:var(--deep)}
+#simFeedback.good{border-color:var(--g)}#simFeedback.bad{border-color:var(--r)}#simFeedback.hint{border-color:var(--photon)}
+@media (max-width:760px){.simwrap{grid-template-columns:1fr;height:auto}#simBox{height:46vh}}
+
+/* result */
+#result{display:flex;align-items:center;justify-content:center}
+.resbox{width:min(640px,100%);display:flex;flex-direction:column;gap:12px}
+.resbox h2{font-size:38px}
+.bigstars{font-size:54px;letter-spacing:8px;color:var(--photon);line-height:1}
+.bigstars em{font-style:normal;color:var(--line)}
+.tally{display:grid;grid-template-columns:1fr auto;gap:2px 16px;font-variant-numeric:tabular-nums;background:var(--hull);border:1px solid var(--line);border-radius:14px;padding:12px 16px}
+.tally dt{color:var(--dim)}.tally dd{margin:0;text-align:right;font-family:var(--display);font-size:19px}
+.tally .tot{color:var(--photon);font-size:24px}
+.news{display:flex;flex-direction:column;gap:6px}
+.news p{border-left:4px solid var(--photon);padding-left:10px}
+
+#toast{position:absolute;left:50%;top:calc(64px + env(safe-area-inset-top,0px));transform:translateX(-50%);background:var(--glass);
+  border:1px solid var(--photon);border-radius:12px;padding:8px 18px;font-family:var(--display);font-size:19px;max-width:90%;text-align:center;pointer-events:none}
+
+/* ===== standalone reset (GitHub Pages) ===== */
+html{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
+
+/* ===== login / password ===== */
+#login,#pw{display:flex;align-items:center;justify-content:center}
+.loginbox{display:grid;grid-template-columns:minmax(0,380px) minmax(0,500px);gap:36px;align-items:start;width:min(940px,100%)}
+.brand{display:flex;gap:14px;align-items:center}
+.brand h1{font-size:44px;line-height:1.02}
+.rgb.sm{width:104px;height:100px;flex:none}
+.rgb.sm i{width:54px;height:54px}
+.rgb.sm i:nth-child(1){left:25px;top:8px}.rgb.sm i:nth-child(2){left:10px;top:34px}.rgb.sm i:nth-child(3){left:40px;top:34px}
+.form{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:13px;color:var(--dim)}
+.field input{font:inherit;font-size:18px;color:var(--ink);background:var(--deep);border:2px solid var(--line);border-radius:10px;
+  padding:10px 12px;min-height:48px;-webkit-user-select:text;user-select:text}
+.msg{min-height:22px;color:var(--r);font-size:14px}
+.notice{border:1px solid var(--photon);border-radius:10px;padding:8px 12px;font-size:13px;color:var(--photon)}
+.pwbox{width:min(420px,100%);display:flex;flex-direction:column;gap:6px}
+.pwbox h2{font-size:32px}
+.dim{color:var(--dim);font-size:13px}
+
+/* ===== ranking ===== */
+.rankcard{background:var(--hull);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.rankhead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.rankhead h3{font-size:22px}
+.rankhead span{font-size:12px;color:var(--dim)}
+.rankcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px}
+.rankcols h4{margin:0 0 4px;font-family:var(--display);font-weight:400;font-size:16px;color:var(--photon)}
+.rk{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:6px;padding:3px 6px;border-radius:6px;font-variant-numeric:tabular-nums;font-size:14px}
+.rk b{font-family:var(--display);font-weight:400;color:var(--dim)}
+.rk.top b{color:var(--photon)}
+.rk.me{background:var(--hull2);outline:1px solid var(--photon)}
+.rk.gap{color:var(--dim);grid-template-columns:1fr;text-align:center;padding:0}
+.myrank{font-size:13px;color:var(--photon)}
+.stage .sc{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+.stage .sc i{font-style:normal;color:var(--g)}
+
+/* ===== modal / hidden room ===== */
+#modal{position:absolute;inset:0;background:rgba(7,11,36,.82);display:flex;align-items:center;justify-content:center;padding:16px}
+.modalbox{background:var(--hull);border:2px solid var(--photon);border-radius:18px;padding:20px 22px;max-width:480px;display:flex;flex-direction:column;gap:10px}
+.modalbox h2{font-size:28px}
+#simIntro{font-size:14px;color:var(--dim);border-left:3px solid var(--photon);padding-left:10px}
+#simTimer{font-family:var(--display);font-size:22px;color:var(--r);font-variant-numeric:tabular-nums}
+.chip.warn{border-color:var(--r)}
+.chip.warn b{color:var(--r)}
+#hudEnergy b{letter-spacing:2px;color:var(--g)}
+.tally .sub{color:var(--ink);border-top:1px solid var(--line);padding-top:4px;margin-top:2px}
+@media (max-width:820px){.loginbox{grid-template-columns:1fr;gap:18px}#login{align-items:flex-start}.brand h1{font-size:34px}}
+
+.tahead{margin:14px 0 4px;font-family:var(--display);font-weight:400;font-size:16px;color:var(--photon)}
+.tagrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:2px 16px}
+.rk.ta{grid-template-columns:38px minmax(0,1fr) auto}
+.tabs{overflow-x:auto}
+.tabs button{white-space:nowrap}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+
+  <div id="hud" hidden>
+    <span class="chip" id="hudStage"></span>
+    <span class="chip" id="hudTimeBox">시간 <b id="hudTime">0:00</b></span>
+    <span class="spacer"></span>
+    <span class="chip" id="hudEnergy">에너지 <b id="hudEn">●●●</b></span>
+    <span class="chip" id="hudPhBox">광자 <b id="hudPhoton">0</b>/10</span>
+    <span class="chip opt">미션 <b id="hudMission">대기</b></span>
+    <button class="btn ghost small" id="btnMute" type="button">소리 켬</button>
+    <button class="btn ghost small" id="btnQuit" type="button">지도</button>
+  </div>
+  <div class="pad l" id="padL" hidden>
+    <button type="button" id="bLeft" aria-label="왼쪽으로 이동">◀</button>
+    <button type="button" id="bRight" aria-label="오른쪽으로 이동">▶</button>
+  </div>
+  <div class="pad r" id="padR" hidden>
+    <button type="button" id="bAct" class="act" hidden>조사</button>
+    <button type="button" id="bJump" class="jump">점프</button>
+  </div>
+
+  <section class="screen" id="login">
+    <div class="loginbox">
+      <div>
+        <div class="brand">
+          <div class="rgb sm" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div><p class="eyebrow">중2 과학 · 빛 / 별과 우주</p><h1>빛과 별<br>탐사대</h1></div>
+        </div>
+        <form class="form" id="loginForm" autocomplete="off">
+          <div class="field"><label for="inId">학번 (5자리)</label><input id="inId" type="text" inputmode="numeric" maxlength="5" placeholder="예: 20101"></div>
+          <div class="field"><label for="inPw">비밀번호</label><input id="inPw" type="password" maxlength="40" placeholder="처음에는 학번!!"></div>
+          <p class="msg" id="loginMsg"></p>
+          <div class="row">
+            <button class="btn" id="btnLogin" type="submit">로그인</button>
+            <button class="btn ghost" id="btnFull" type="button">전체 화면</button>
+          </div>
+          <p class="notice" id="demoNote" hidden>체험 모드: 서버 주소(API_URL)가 설정되지 않아 기록이 이 기기에만 저장됩니다. 아무 5자리 학번과 "학번!!"으로 로그인할 수 있습니다.</p>
+          <p class="rot">태블릿을 가로로 돌리면 화면이 넓어진다.</p>
+        </form>
+      </div>
+      <div class="rankcard" id="rankLogin"></div>
+    </div>
+  </section>
+
+  <section class="screen" id="pw" hidden>
+    <form class="pwbox form" id="pwForm" autocomplete="off">
+      <p class="eyebrow">보안 설정</p>
+      <h2>비밀번호 변경</h2>
+      <p class="dim" id="pwWhy">처음 로그인했다. 나만 아는 비밀번호로 바꿔야 탐사를 시작할 수 있다.</p>
+      <div class="field"><label for="pw1">새 비밀번호 (8자리 이상)</label><input id="pw1" type="password" maxlength="40"></div>
+      <div class="field"><label for="pw2">새 비밀번호 확인</label><input id="pw2" type="password" maxlength="40"></div>
+      <p class="msg" id="pwMsg"></p>
+      <div class="row">
+        <button class="btn" id="btnPw" type="submit">변경하고 시작</button>
+        <button class="btn ghost" id="btnPwCancel" type="button">취소</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="screen" id="map" hidden>
+    <div class="maphead">
+      <div class="crew">
+        <span class="eyebrow" id="mapRank"></span>
+        <h2 id="mapName"></h2>
+        <div class="xpbar"><b id="mapXp"></b></div>
+        <span id="mapNext" style="font-size:13px;color:var(--dim)"></span>
+        <span class="myrank" id="mapMyRank"></span>
+      </div>
+      <div class="stats">
+        <div><span>총점</span><strong id="sXp">0</strong></div>
+        <div><span>별</span><strong id="sStar">0</strong></div>
+        <div><span>숨은 공간</span><strong id="sHid">0</strong></div>
+        <div><span>뱃지</span><strong id="sBg">0</strong></div>
+      </div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="stages" aria-selected="true">스테이지</button>
+      <button type="button" role="tab" data-tab="rank" aria-selected="false">랭킹</button>
+      <button type="button" role="tab" data-tab="grade" aria-selected="false">등급</button>
+      <button type="button" role="tab" data-tab="badges" aria-selected="false">뱃지</button>
+      <button type="button" role="tab" data-tab="codex" aria-selected="false">개념 도감</button>
+    </div>
+    <div id="mapBody"></div>
+    <div class="mapfoot">
+      <button class="btn ghost small" id="btnLogout" type="button">로그아웃</button>
+      <button class="btn ghost small" id="btnChangePw" type="button">비밀번호 변경</button>
+      <span id="syncState"></span>
+    </div>
+  </section>
+
+  <section class="screen" id="sim" hidden>
+    <div class="simwrap">
+      <div id="simBox"><canvas id="simCanvas"></canvas><div id="simRead"></div></div>
+      <div class="simside">
+        <div class="simtop"><h2 id="simTitle"></h2><span id="simTimer" hidden></span><div class="dots" id="simDots"></div></div>
+        <p id="simIntro" hidden></p>
+        <p id="simText"></p>
+        <div id="simControls"></div>
+        <div id="simOptions"></div>
+        <div id="simFeedback" hidden></div>
+        <div class="row">
+          <button class="btn" id="simCheck" type="button">확인</button>
+          <button class="btn" id="simNext" type="button" hidden>다음 미션</button>
+          <button class="btn ghost small" id="simHint" type="button">힌트 (-15)</button>
+          <button class="btn ghost small" id="simExit" type="button">나가기</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" id="result" hidden><div class="resbox" id="resBox"></div></section>
+
+  <div id="modal" hidden><div class="modalbox" id="modalBox"></div></div>
+  <div id="toast" hidden></div>
+</div>
+
+<script>
+/* 빛과 별 탐사대 v2 */
+(()=>{'use strict';
+const $=s=>document.querySelector(s);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const rad=d=>d*Math.PI/180, TAU=Math.PI*2;
+function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const C={space:'#0b1030',deep:'#070b24',hull:'#151b45',hull2:'#1f2760',line:'#343e86',ink:'#eef1ff',dim:'#a9b0dc',photon:'#ffd447',r:'#ff5468',g:'#3fe08a',b:'#5a93ff'};
+const FD="'Do Hyeon','Apple SD Gothic Neo','Malgun Gothic',sans-serif",FB="'IBM Plex Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif";
+function T(c,s,x,y,size,col,al,disp){c.font=(disp?'':'500 ')+size+'px '+(disp?FD:FB);c.fillStyle=col||C.ink;c.textAlign=al||'left';c.fillText(s,x,y)}
+function Ln(c,x1,y1,x2,y2,col,w,dash){c.save();c.strokeStyle=col;c.lineWidth=w||2;if(dash)c.setLineDash(dash);c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke();c.restore()}
+function dot(c,x,y,r,col){c.fillStyle=col;c.beginPath();c.arc(x,y,r,0,TAU);c.fill()}
+function glow(c,x,y,r,rgb,a){const g=c.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,`rgba(${rgb},${a})`);g.addColorStop(1,`rgba(${rgb},0)`);c.fillStyle=g;c.beginPath();c.arc(x,y,r,0,TAU);c.fill()}
+function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath()}
+function arrow(c,x1,y1,x2,y2,col,w){Ln(c,x1,y1,x2,y2,col,w);const a=Math.atan2(y2-y1,x2-x1);c.fillStyle=col;c.beginPath();c.moveTo(x2,y2);c.lineTo(x2-10*Math.cos(a-.45),y2-10*Math.sin(a-.45));c.lineTo(x2-10*Math.cos(a+.45),y2-10*Math.sin(a+.45));c.fill()}
+const esc=s=>String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+
+/* ---------- 스테이지 정의 ---------- */
+const WORLDS=[{title:'1구역 · 광학 연구소',unit:'빛'},{title:'2구역 · 별빛 평원',unit:'별과 우주 (낮은 중력)'}];
+const STAGES=[
+ {id:'straight',world:0,name:'빛의 직진',place:'그림자 통로',sim:'shadow',concept:['빛은 한 물질 안에서 곧게 나아간다(빛의 직진).','빛이 물체에 막히면 뒤쪽에 그림자가 생긴다.','물체가 광원에 가까울수록 그림자가 커진다.']},
+ {id:'reflect',world:0,name:'빛의 반사',place:'거울의 방',sim:'mirror',concept:['입사각과 반사각은 법선(면에 수직인 선)을 기준으로 잰다.','반사 법칙: 입사각 = 반사각','매끄러운 면에서는 정반사, 거친 면에서는 난반사가 일어난다.']},
+ {id:'refract',world:0,name:'빛의 굴절',place:'수조 구역',sim:'refract',concept:['빛은 서로 다른 물질의 경계에서 꺾인다(굴절).','공기에서 물·유리로 들어갈 때: 입사각 > 굴절각','물속 물체가 실제보다 떠 보이는 것도 굴절 때문이다.']},
+ {id:'lens',world:0,name:'거울과 렌즈의 상',place:'렌즈 공방',sim:'lens',concept:['볼록 렌즈·오목 거울: 가까이에서는 크고 바로 선 상, 멀리서는 거꾸로 선 상','오목 렌즈·볼록 거울: 항상 작고 바로 선 상','볼록 거울은 넓은 범위를 비춰 도로 모퉁이와 매장 천장에 쓴다.']},
+ {id:'color',world:0,name:'빛의 합성',place:'삼원색 무대',sim:'color',concept:['빛의 삼원색: 빨강·초록·파랑','빨강+초록=노랑, 초록+파랑=청록, 빨강+파랑=자홍','삼원색을 모두 합치면 흰색. 화면의 화소가 이 원리를 쓴다.']},
+ {id:'parallax',world:1,name:'연주 시차',place:'시차 관측소',sim:'parallax',concept:['시차: 관측 위치에 따라 물체가 보이는 방향이 달라지는 각','연주 시차: 지구 공전으로 6개월 간격을 두고 잰 시차의 1/2','거리(pc) = 1 ÷ 연주 시차(″). 가까운 별일수록 연주 시차가 크다.']},
+ {id:'bright',world:1,name:'거리와 밝기',place:'별빛 측정소',sim:'bright',concept:['별빛은 사방으로 퍼져 먼 곳일수록 넓은 면적을 비춘다.','별의 밝기는 거리의 제곱에 반비례한다.','거리 2배 → 1/4, 3배 → 1/9, 10배 → 1/100']},
+ {id:'magnitude',world:1,name:'별의 등급',place:'등급 판정소',sim:'magnitude',concept:['등급 숫자가 작을수록 밝다. 1등급 차는 약 2.5배, 5등급 차는 100배','겉보기 등급: 눈에 보이는 밝기 / 절대 등급: 10 pc에 있다고 가정한 밝기','겉보기 등급이 절대 등급보다 작으면 10 pc보다 가까운 별']},
+ {id:'temp',world:1,name:'표면 온도와 색',place:'별빛 온도계',sim:'temp',concept:['별의 색은 표면 온도에 따라 달라진다.','표면 온도가 높을수록 파란색, 낮을수록 붉은색','청색 > 청백색 > 백색 > 황백색 > 황색 > 주황색 > 적색']},
+ {id:'galaxy',world:1,name:'우리은하',place:'은하 지도실',sim:'galaxy',concept:['우리은하: 막대 나선 모양, 지름 약 30 kpc(약 10만 광년)','태양계는 은하 중심에서 약 8.5 kpc 떨어진 나선팔에 있다.','산개 성단(젊고 푸른 별, 엉성함) · 구상 성단(늙고 붉은 별, 공 모양) · 성운(방출·반사·암흑)']},
+ {id:'expand',world:1,name:'팽창하는 우주',place:'은하 관제탑',sim:'expand',concept:['은하 사이의 거리가 멀어지고 있다 = 우주가 팽창한다.','멀리 있는 은하일수록 더 빠르게 멀어진다.','팽창하는 우주에는 특별한 중심이 없다(대폭발 우주론).']},
+ {id:'explore',world:1,name:'우주 탐사',place:'발사 기지',sim:'explore',concept:['인공위성·우주 정거장·우주 망원경·탐사선으로 우주를 탐사한다.','우주 망원경은 대기의 방해 없이 선명하게 관측한다.','우주 기술은 위치 정보·기상 예보 등 생활에 쓰이고, 우주 쓰레기는 해결할 과제다.']}
+];
+
+
+/* ---------- 계정·점수 규칙·서버 통신 ---------- */
+const API_URL=String(window.API_URL||'').trim(),DEMO=!/^https:\/\//.test(API_URL);
+let prefs={mute:false};try{prefs=Object.assign(prefs,JSON.parse(localStorage.getItem('lsc-prefs'))||{})}catch(e){}
+const savePrefs=()=>{try{localStorage.setItem('lsc-prefs',JSON.stringify(prefs))}catch(e){}};
+let me=null,rankData=null;
+const H_BONUS=[150,105,75,45],HID_MOVE=20,HID_SOLVE=30;
+const hBonus=n=>H_BONUS[clamp(n,1,4)-1];
+const coefOf=a=>a<=1?1:a===2?.9:.8;
+const sdef=id=>STAGES.find(d=>d.id===id);
+/* 한 판의 점수 = (정확도 + 시간 보너스 + 숨겨진 공간 보너스) × (히든 스테이지 1.5) × 도전 계수 */
+function calc(id,mission,photons,hits,falls,time,attempts,bonus){
+ const d=sdef(id),mult=d.hidden?1.5:1,T0=d.hidden?180:120,acc=clamp(Math.round(mission+photons*10-hits*10-falls*10),0,400),
+  tb=time<=15?200:time>=T0?0:Math.round(200*(T0-time)/(T0-15)),coef=coefOf(attempts),score=Math.round((acc+tb+bonus)*mult*coef);
+ return{acc,tb,coef,mult,score,star:score>=500*mult?3:score>=350*mult?2:1}}
+const blankRec=()=>({a:0,s:0,acc:0,tb:0,hb:0,t:0,star:0,ph:0,fs:0,ta:0,clr:false});
+const rec=id=>(me&&me.st[id])||blankRec();
+const myRec=id=>me.st[id]=Object.assign(blankRec(),me.st[id]);
+const cleared=id=>!!rec(id).clr;
+const total=()=>STAGES.reduce((a,d)=>a+(rec(d.id).s||0),0);
+const totStars=()=>STAGES.reduce((a,d)=>a+(cleared(d.id)?rec(d.id).star||0:0),0);
+const totPh=()=>STAGES.reduce((a,d)=>a+(rec(d.id).ph||0),0);
+const totHid=()=>STAGES.filter(d=>rec(d.id).hb>0).length;
+const clsLabel=id=>id[0]+'학년 '+(+id.slice(1,3))+'반';
+const fmtT=t=>{t=Math.max(0,Math.floor(t));return Math.floor(t/60)+':'+String(t%60).padStart(2,'0')};
+const RANKS=[[0,'훈련생'],[1000,'관측 대원'],[2500,'광학 기사'],[4200,'항해사'],[6000,'선임 연구원'],[8000,'은하 탐험가']];
+function rank(x){let i=0;RANKS.forEach((r,k)=>{if(x>=r[0])i=k});return i}
+const TITLES=[
+ {id:'xperfect',name:'완전무결 탐사대장',desc:'히든 스테이지를 포함한 15개 스테이지 모두 ★3'},
+ {id:'xtime',name:'시간의 지배자',desc:'15개 스테이지 모두 클리어 + 타임어택 1위 1개'}];
+const myTitles=()=>TITLES.filter(t=>me&&me.badges.includes(t.id));
+const worldDone=w=>STAGES.filter(d=>d.world===w).every(d=>cleared(d.id));
+const BADGES=[
+ {id:'first',name:'첫 탐사',desc:'스테이지 1개 클리어',ok:()=>STAGES.some(d=>cleared(d.id))},
+ {id:'sniper',name:'한 번에 명중',desc:'한 스테이지의 미션 3개를 모두 한 번에 성공',ok:c=>!!c&&c.mission>=300},
+ {id:'nohit',name:'무결점 이동',desc:'충돌도 추락도 없이 클리어',ok:c=>!!c&&c.hits===0&&c.falls===0},
+ {id:'sweep',name:'싹쓸이',desc:'한 스테이지의 광자 10개를 모두 수집',ok:c=>!!c&&c.got>=10},
+ {id:'speed',name:'광속 돌파',desc:'1분 안에 클리어',ok:c=>!!c&&c.time<=60},
+ {id:'attack',name:'타임어택 등록',desc:'타임어택 자격을 갖춘 기록 달성',ok:c=>!!c&&c.ta},
+ {id:'collector',name:'광자 수집가',desc:'광자 누적 60개',ok:()=>totPh()>=60},
+ {id:'secret',name:'비밀 요원',desc:'숨겨진 공간 1곳 성공',ok:()=>totHid()>=1},
+ {id:'secret6',name:'비밀의 지배자',desc:'숨겨진 공간 6곳 성공',ok:()=>totHid()>=6},
+ {id:'rgb',name:'색의 마법사',desc:'빛의 합성 ★3',ok:()=>rec('color').star>=3},
+ {id:'lens',name:'렌즈 장인',desc:'거울과 렌즈의 상 ★3',ok:()=>rec('lens').star>=3},
+ {id:'light',name:'빛의 지배자',desc:'1구역 스테이지 5개 클리어',ok:()=>worldDone(0)},
+ {id:'cosmos',name:'우주 개척자',desc:'2구역 스테이지 7개 클리어',ok:()=>worldDone(1)},
+ {id:'pioneer',name:'미지의 개척자',desc:'히든 스테이지 1개 클리어',ok:()=>STAGES.some(d=>d.hidden&&cleared(d.id))},
+ {id:'three5',name:'반짝반짝',desc:'★3 스테이지 5개',ok:()=>STAGES.filter(d=>rec(d.id).star>=3).length>=5},
+ {id:'master',name:'은하 정복',desc:'기본 스테이지 12개 모두 ★3',ok:()=>STAGES.filter(d=>!d.hidden).every(d=>rec(d.id).star>=3)}
+];
+
+/* 체험 모드(서버 없이 이 기기에만 저장) */
+function demoTops(db){return STAGES.map(sd=>{let best=null;Object.keys(db).forEach(k=>{const r=db[k].st[sd.id];if(r&&r.ta>0&&(!best||r.ta<best.t))best={s:sd.id,id:k,t:r.ta}});return best}).filter(Boolean)}
+function demoTitles(db,id){const u=db[id],set=new Set(u.badges),all=STAGES.every(s=>(u.st[s.id]||{}).clr);
+ if(all&&STAGES.every(s=>u.st[s.id].star===3))set.add('xperfect');
+ if(all&&demoTops(db).some(x=>x.id===id))set.add('xtime');u.badges=[...set]}
+function demoApi(a,d){
+ let db={};try{db=JSON.parse(localStorage.getItem('lsc-demo2'))||{}}catch(e){}
+ const id=d.id||String(d.token||'').split('.')[0],u=id?(db[id]=db[id]||{pw:null,st:{},badges:[]}):null;let out={ok:true};
+ const R=s=>u.st[s]=Object.assign(blankRec(),u.st[s]);
+ if(a==='login'){if(!/^\d{5}$/.test(d.id)||d.pw!==(u.pw||d.id+'!!'))return{ok:false,err:'학번 또는 비밀번호가 올바르지 않습니다.'};demoTitles(db,id);out=Object.assign(out,{id,token:id+'.demo',mustChange:!u.pw,st:u.st,badges:u.badges,openAll:false,openHidden:false})}
+ else if(a==='state'){if(!u)return{ok:false,err:'AUTH: 다시 로그인하세요.'};out=Object.assign(out,{id,mustChange:!u.pw,st:u.st,badges:u.badges,openAll:false,openHidden:false})}
+ else if(a==='changePw'){if(d.newPw.length<8)return{ok:false,err:'비밀번호는 8자리 이상이어야 합니다.'};if(d.newPw===id+'!!')return{ok:false,err:'초기 비밀번호와 다른 비밀번호를 정하세요.'};u.pw=d.newPw;out.token=id+'.demo'}
+ else if(a==='attempt'){const r=R(d.stage);r.a++;out.stage=d.stage;out.rec=r}
+ else if(a==='finish'){const r=R(d.stage);if(!r.a)r.a=1;if(r.clr&&r.a===1)r.a=2;const c=calc(d.stage,d.mission,d.photons,d.hits,d.falls,d.time,r.a,d.bonus);
+  if(!r.clr||c.score>r.s||(c.score===r.s&&d.time<r.t))Object.assign(r,{s:c.score,acc:c.acc,tb:c.tb,hb:d.bonus,t:d.time,star:c.star,ph:d.photons});
+  if(r.a===1){r.fs=c.star;if(c.acc===400&&d.bonus===150)r.ta=d.time}
+  r.clr=true;u.badges=[...new Set(u.badges.concat((d.badges||[]).filter(b=>b[0]!=='x')))];demoTitles(db,id);out.stage=d.stage;out.rec=r;out.badges=u.badges}
+ else if(a==='rank'){const list=Object.keys(db).map(k=>({id:k,total:Object.values(db[k].st).reduce((s,r)=>s+(r.s||0),0)})).filter(x=>x.total>0).sort((x,y)=>y.total-x.total);
+  const cl={};Object.keys(db).forEach(k=>{const c=cl[k.slice(0,3)]=cl[k.slice(0,3)]||{key:k.slice(0,3),label:clsLabel(k),n:0,sum:0};c.n++;c.sum+=(list.find(x=>x.id===k)||{total:0}).total});
+  const now=new Date();out.updated=[now.getHours(),now.getMinutes(),now.getSeconds()].map(v=>String(v).padStart(2,'0')).join(':');
+  out.top=list.slice(0,10).map((x,i)=>({rank:i+1,id:x.id,total:x.total}));out.classes=Object.values(cl).filter(c=>c.sum>0).map(c=>({key:c.key,label:c.label,avg:Math.round(c.sum/c.n)})).sort((x,y)=>y.avg-x.avg);
+  out.ta=demoTops(db);
+  if(id&&u){const key=id.slice(0,3);let n=0;out.myClass=[];out.classKey=key;list.forEach((x,i)=>{if(x.id.slice(0,3)===key){n++;out.myClass.push({rank:n,id:x.id,total:x.total})}if(x.id===id)out.me={rank:i+1,total:x.total,classRank:n}})}
+  return out}
+ try{localStorage.setItem('lsc-demo2',JSON.stringify(db))}catch(e){}
+ return out}
+
+function post(action,data){
+ data=Object.assign({action},data);
+ const fail=m=>Object.assign(new Error(m),{server:true});
+ if(DEMO)return new Promise((res,rej)=>setTimeout(()=>{const r=demoApi(action,data);r.ok?res(r):rej(fail(r.err))},120));
+ const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),25000);
+ return fetch(API_URL,{method:'POST',body:JSON.stringify(data),signal:ctl.signal,redirect:'follow'}).then(r=>r.json())
+  .then(j=>{if(!j||!j.ok)throw fail((j&&j.err)||'서버 오류');return j}).finally(()=>clearTimeout(tm))}
+const call=(action,data)=>post(action,Object.assign({token:me&&me.token},data));
+
+/* 보낼 기록 대기열: 연결이 끊겨도 보관했다가 순서대로 다시 보낸다 */
+let queue=[];try{queue=JSON.parse(localStorage.getItem('lsc-q2'))||[]}catch(e){}
+const saveQ=()=>{try{localStorage.setItem('lsc-q2',JSON.stringify(queue))}catch(e){}};
+let flushing=false,syncErr=false;
+function enqueue(action,data){if(!me)return;queue.push({action,data:Object.assign({token:me.token},data)});saveQ();flush()}
+async function flush(){
+ if(flushing)return;flushing=true;paintSync();
+ while(queue.length){const it=queue[0];
+  try{const r=await post(it.action,it.data);syncErr=false;
+   if(me&&it.data.token===me.token){
+    if(r.badges){const got=TITLES.filter(t=>r.badges.includes(t.id)&&!me.badges.includes(t.id));me.badges=[...new Set(me.badges.concat(r.badges))];got.forEach(t=>toast('히든 등급 달성: '+t.name))}
+    if(queue.length===1){if(r.rec&&r.stage)me.st[r.stage]=r.rec;if(it.action==='finish')setTimeout(()=>{loadRank();if(state==='map')renderMap()},400)}}}
+  catch(e){if(!e.server){syncErr=true;break}}
+  queue.shift();saveQ()}
+ flushing=false;paintSync()}
+setInterval(()=>{if(queue.length)flush()},15000);
+function paintSync(){const t=queue.length?(syncErr?'연결을 기다리는 기록 '+queue.length+'건. 연결되면 자동으로 저장된다.':'기록 저장 중…'):(DEMO?'체험 모드: 기록은 이 기기에만 저장된다.':'모든 기록이 저장되었다.');document.querySelectorAll('.sync,#syncState').forEach(e=>{e.textContent=t})}
+
+/* ---------- 소리 ---------- */
+let AC=null;
+function beep(f,d,type,vol){if(prefs.mute)return;try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.type=type||'sine';o.frequency.value=f;g.gain.value=vol||.06;g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+(d||.08));o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+(d||.08))}catch(e){}}
+const jingle=a=>a.forEach((f,i)=>setTimeout(()=>beep(f,.14,'triangle',.07),i*110));
+
+/* ---------- 시뮬레이션(실험 장치) ---------- */
+function simBg(c,w,h){c.fillStyle=C.deep;c.fillRect(0,0,w,h);c.strokeStyle='rgba(52,62,134,.28)';c.lineWidth=1;c.beginPath();for(let x=20;x<w;x+=40){c.moveTo(x,0);c.lineTo(x,h)}for(let y=20;y<h;y+=40){c.moveTo(0,y);c.lineTo(w,y)}c.stroke()}
+function lensImg(s){const isL=s.el[3]==='L',f=(s.el==='cvxL'||s.el==='ccvM')?15:-15,u=s.u;if(Math.abs(u-f)<.01)return{isL,f,u,v:null};const v=u*f/(u-f),m=-v/u;return{isL,f,u,v,m,hi:10*m,ix:isL?v:-v}}
+const TC=[[3000,[255,84,58]],[3500,[255,110,66]],[5000,[255,165,74]],[6000,[255,226,104]],[7500,[255,244,200]],[10000,[255,255,255]],[20000,[190,212,255]],[32000,[128,168,255]]];
+function tcol(t){for(let i=1;i<TC.length;i++)if(t<=TC[i][0]){const a=TC[i-1],b=TC[i],k=(t-a[0])/(b[0]-a[0]);return a[1].map((v,j)=>Math.round(v+(b[1][j]-v)*k))}return TC[TC.length-1][1]}
+const tclass=t=>t<=3500?['적색','베텔게우스·안타레스']:t<=5000?['주황색','알데바란·아크투루스']:t<=6000?['황색','태양·카펠라']:t<=7500?['황백색','프로키온·북극성']:t<=10000?['백색','시리우스·직녀성']:t<28000?['청백색','리겔·스피카']:['청색','민타카'];
+const GAL=[[0,0],[.35,.1],[-.3,.25],[.15,-.4],[-.5,-.3],[.62,.45],[-.62,.5],[.85,-.6],[-.2,.7]];
+const skyStars=(()=>{const R=rng(11),a=[];for(let i=0;i<70;i++)a.push([R(),R(),.5+R()*1.3]);return a})();
+function starfield(c,w,h){for(const s of skyStars){c.fillStyle='rgba(238,241,255,'+(.25+s[2]*.3)+')';c.fillRect(s[0]*w,s[1]*h,s[2],s[2])}}
+
+const SIMS={
+shadow:{
+ init:()=>({x:75}),
+ controls:[{type:'range',key:'x',label:'광원에서 물체까지의 거리',min:20,max:90,step:1,unit:' cm'}],
+ read:s=>'그림자 높이 '+(1000/s.x).toFixed(1)+' cm',
+ steps:[
+  {text:'높이 10 cm인 물체를 움직여 스크린에 생기는 그림자의 높이를 20 cm로 만들자.',ok:s=>Math.abs(1000/s.x-20)<=1,
+   fail:s=>1000/s.x>20?'그림자가 너무 크다. 물체를 광원에서 더 멀리 옮겨 보자.':'그림자가 너무 작다. 물체를 광원 쪽으로 옮겨 보자.',
+   hint:'물체가 광원과 스크린의 한가운데에 있으면 그림자는 물체의 2배가 된다.',
+   explain:'빛은 곧게 나아가기 때문에 물체 뒤쪽으로는 빛이 닿지 못해 그림자가 생긴다. 물체가 딱 중간(50 cm)에 있으면 그림자는 2배가 된다.'},
+  {text:'이번에는 그림자의 높이를 40 cm로 만들자.',ok:s=>Math.abs(1000/s.x-40)<=2,
+   fail:s=>1000/s.x>40?'그림자가 너무 크다. 물체를 조금 더 멀리.':'그림자가 아직 작다. 물체를 광원 쪽으로 더 가까이.',
+   hint:'그림자가 4배가 되려면 물체는 전체 거리의 1/4 지점에 있어야 한다.',
+   explain:'물체가 광원에 가까울수록 더 넓게 퍼지는 빛을 막기 때문에 그림자가 커진다.'},
+  {text:'손전등 앞에서 손을 손전등 쪽으로 가까이 가져가면 벽에 생긴 그림자는 어떻게 될까?',options:['커진다','작아진다','변하지 않는다'],answer:0,
+   hint:'장치에서 물체를 광원 쪽으로 움직여 확인해 보자.',explain:'빛이 직진하므로, 광원에 가까운 물체일수록 더 넓은 범위의 빛을 가려 그림자가 커진다.'}
+ ],
+ draw(c,w,h,s){
+  const k=Math.min(w*.8/100,h*.72/50),x0=(w-100*k)/2,cy=h*.47,ox=x0+s.x*k,sx=x0+100*k,sh=1000/s.x;
+  c.fillStyle='rgba(255,212,71,.13)';c.beginPath();c.moveTo(x0,cy);c.lineTo(sx,cy-27*k);c.lineTo(sx,cy+27*k);c.fill();
+  c.fillStyle=C.deep;c.beginPath();c.moveTo(ox,cy-5*k);c.lineTo(sx,cy-sh/2*k);c.lineTo(sx,cy+sh/2*k);c.lineTo(ox,cy+5*k);c.fill();
+  Ln(c,x0,cy,sx,cy-sh/2*k,C.photon,1.5);Ln(c,x0,cy,sx,cy+sh/2*k,C.photon,1.5);
+  Ln(c,sx,cy-27*k,sx,cy+27*k,C.ink,6);Ln(c,sx,cy-sh/2*k,sx,cy+sh/2*k,'#000',6);
+  for(let v=-20;v<=20;v+=10){Ln(c,sx+6,cy-v*k,sx+14,cy-v*k,C.dim,1);}
+  T(c,sh.toFixed(0)+' cm',sx-10,cy-sh/2*k-8,14,C.photon,'right',1);
+  c.fillStyle=C.r;c.fillRect(ox-4,cy-5*k,8,10*k);
+  glow(c,x0,cy,34,'255,212,71',.9);dot(c,x0,cy,7,'#fff');
+  T(c,'광원',x0,cy+52,13,C.dim,'center');T(c,'물체 10 cm',ox,cy+5*k+20,13,C.r,'center');T(c,'스크린',sx,cy+27*k+20,13,C.dim,'center');
+  const ry=h*.9>cy+27*k+34?cy+27*k+40:h-46;Ln(c,x0,ry,sx,ry,C.line,2);for(let v=0;v<=100;v+=10){Ln(c,x0+v*k,ry-4,x0+v*k,ry+4,C.dim,1);if(v%50===0)T(c,v+'',x0+v*k,ry-8,11,C.dim,'center')}
+  dot(c,ox,ry,5,C.r);
+ }
+},
+mirror:{
+ init:()=>({i:20,target:30}),
+ controls:[{type:'range',key:'i',label:'입사각',min:10,max:75,step:1,unit:'°'}],
+ read:s=>'입사각 '+s.i+'° · 반사각 '+s.i+'°',
+ steps:[
+  {enter:s=>{s.target=30},text:'레이저의 입사각을 조절해, 거울에서 반사된 빛으로 감지기를 맞히자.',ok:s=>Math.abs(s.i-s.target)<=1,
+   fail:s=>s.i<s.target?'반사된 빛이 감지기보다 법선 쪽으로 지나간다. 입사각을 키워 보자.':'반사된 빛이 감지기보다 거울 쪽으로 지나간다. 입사각을 줄여 보자.',
+   hint:'감지기는 법선에서 30° 방향에 있다. 반사각이 30°가 되려면 입사각은?',
+   explain:'반사 법칙: 입사각과 반사각은 항상 같다. 두 각 모두 거울 면이 아니라 법선을 기준으로 잰다.'},
+  {enter:s=>{s.target=55;s.i=20},text:'감지기가 옮겨졌다. 눈금을 읽고 다시 맞히자.',ok:s=>Math.abs(s.i-s.target)<=1,
+   fail:s=>s.i<s.target?'입사각이 작다. 더 키워 보자.':'입사각이 크다. 조금 줄여 보자.',
+   hint:'반원의 눈금은 10° 간격이다. 감지기는 50°와 60° 사이의 가운데에 있다.',
+   explain:'입사각이 커지면 반사각도 똑같이 커진다. 입사 광선·법선·반사 광선은 한 평면 위에 있다.'},
+  {text:'빛이 거울 면과 50°를 이루며 들어왔다. 반사각은 몇 도일까?',options:['40°','50°','90°','100°'],answer:0,
+   hint:'입사각은 거울 면이 아니라 법선과 이루는 각이다. 법선은 거울 면과 90°를 이룬다.',
+   explain:'거울 면과 50°이면 법선과는 90° - 50° = 40°. 입사각이 40°이므로 반사각도 40°다.'}
+ ],
+ draw(c,w,h,s){
+  const px=w/2,py=h*.8,R=Math.min(w*.42,h*.66),a=rad(s.i),hit=Math.abs(s.i-s.target)<=1;
+  c.fillStyle='rgba(169,176,220,.25)';c.fillRect(px-R*1.05,py,R*2.1,10);Ln(c,px-R*1.05,py,px+R*1.05,py,'#cfd6ff',3);
+  for(let x=-R;x<=R;x+=18)Ln(c,px+x,py+10,px+x-8,py+20,C.line,1.5);
+  c.strokeStyle=C.line;c.lineWidth=1.5;c.beginPath();c.arc(px,py,R,Math.PI,TAU);c.stroke();
+  for(let d=-80;d<=80;d+=10){const t=rad(d),x=px+R*Math.sin(t),y=py-R*Math.cos(t);Ln(c,x,y,px+(R-9)*Math.sin(t),py-(R-9)*Math.cos(t),C.dim,1.5);if(d%30===0&&d)T(c,Math.abs(d)+'°',px+(R+18)*Math.sin(t),py-(R+18)*Math.cos(t)+4,11,C.dim,'center')}
+  Ln(c,px,py,px,py-R-14,C.dim,1.5,[6,6]);T(c,'법선',px,py-R-20,13,C.dim,'center');
+  const sx=px-R*Math.sin(a),sy=py-R*Math.cos(a);
+  Ln(c,sx,sy,px,py,C.r,3);Ln(c,px,py,px+R*1.12*Math.sin(a),py-R*1.12*Math.cos(a),C.r,3);
+  arrow(c,sx,sy,(sx+px)/2,(sy+py)/2,C.r,3);
+  c.strokeStyle=C.photon;c.lineWidth=2;c.beginPath();c.arc(px,py,46,-Math.PI/2-a,-Math.PI/2);c.stroke();c.strokeStyle=C.g;c.beginPath();c.arc(px,py,56,-Math.PI/2,-Math.PI/2+a);c.stroke();
+  T(c,'입사각',px-64,py-64,13,C.photon,'right');T(c,'반사각',px+64,py-64,13,C.g,'left');
+  c.fillStyle=C.hull2;rr(c,sx-16,sy-10,32,20,5);c.fill();T(c,'레이저',sx,sy-16,12,C.dim,'center');
+  const t=rad(s.target),tx=px+R*Math.sin(t),ty=py-R*Math.cos(t);
+  if(hit)glow(c,tx,ty,34,'63,224,138',.8);dot(c,tx,ty,13,hit?C.g:C.hull2);c.strokeStyle=hit?C.g:C.ink;c.lineWidth=3;c.beginPath();c.arc(tx,ty,13,0,TAU);c.stroke();
+  T(c,'감지기',tx,ty-22,12,C.ink,'center');T(c,'거울',px+R*.9,py+36,13,C.dim,'center');
+ }
+},
+refract:{
+ init:()=>({i:15,n:1.33,med:'물',tx:0}),
+ controls:[{type:'range',key:'i',label:'입사각',min:0,max:65,step:1,unit:'°'}],
+ rr:s=>Math.asin(Math.sin(rad(s.i))/s.n),
+ hitX(s){return Math.tan(rad(s.i))+Math.tan(this.rr(s))},
+ read(s){return s.med+' · 입사각 '+s.i+'° → 굴절각 '+(this.rr(s)*180/Math.PI).toFixed(1)+'°'},
+ steps:[
+  {enter:s=>{s.n=1.33;s.med='물';s.i=15;s.tx=Math.tan(rad(50))+Math.tan(Math.asin(Math.sin(rad(50))/1.33))},
+   text:'공기에서 물로 레이저를 쏘아 바닥의 보석을 맞히자. 점선은 빛이 꺾이지 않았다면 갔을 길이다.',ok:s=>Math.abs(SIMS.refract.hitX(s)-s.tx)<.03,
+   fail:s=>SIMS.refract.hitX(s)<s.tx?'빛이 보석 앞쪽에 닿았다. 입사각을 키워 보자.':'빛이 보석을 지나쳤다. 입사각을 줄여 보자.',
+   hint:'빛은 물속에서 법선 쪽으로 꺾인다. 보석을 똑바로 겨누는 것보다 더 비스듬히 쏘아야 한다.',
+   explain:'빛은 공기에서 물로 들어갈 때 경계면에서 법선 쪽으로 꺾인다. 그래서 굴절각이 입사각보다 작다.'},
+  {enter:s=>{s.n=1.5;s.med='유리';s.i=10;s.tx=Math.tan(rad(35))+Math.tan(Math.asin(Math.sin(rad(35))/1.5))},
+   text:'수조가 유리 블록으로 바뀌었다. 유리 바닥의 보석을 맞히자.',ok:s=>Math.abs(SIMS.refract.hitX(s)-s.tx)<.03,
+   fail:s=>SIMS.refract.hitX(s)<s.tx?'조금 모자란다. 입사각을 키워 보자.':'지나쳤다. 입사각을 줄여 보자.',
+   hint:'30°와 40° 사이에서 찾아보자.',
+   explain:'유리는 물보다 빛을 더 많이 꺾는다. 같은 입사각이라도 굴절각이 더 작다.'},
+  {text:'빛이 공기에서 물로 비스듬히 들어갈 때, 입사각과 굴절각의 관계는?',options:['입사각 > 굴절각','입사각 = 굴절각','입사각 < 굴절각'],answer:0,
+   hint:'화면 아래의 각도 수치를 비교해 보자.',explain:'공기 → 물·유리로 갈 때는 입사각이 굴절각보다 크다. 반대로 물 → 공기로 나올 때는 굴절각이 더 크다.'}
+ ],
+ draw(c,w,h,s){
+  const u=Math.min(h*.36,w*.27),ox=w*.09,sy=h*.46,a=rad(s.i),r=this.rr(s),xs=ox+u*Math.tan(a),xb=xs+u*Math.tan(r),gx=ox+s.tx*u,hit=Math.abs(this.hitX(s)-s.tx)<.03;
+  c.fillStyle=s.n>1.4?'rgba(190,212,255,.2)':'rgba(90,147,255,.26)';c.fillRect(0,sy,w,u);c.fillStyle=C.hull2;c.fillRect(0,sy+u,w,h);
+  Ln(c,0,sy,w,sy,'#9fc0ff',2);T(c,'공기',w-14,sy-12,14,C.dim,'right');T(c,s.med,w-14,sy+24,14,'#9fc0ff','right');
+  Ln(c,xs,sy-u*.9,xs,sy+u,C.dim,1.5,[6,6]);T(c,'법선',xs+6,sy-u*.9+4,12,C.dim);
+  Ln(c,xs,sy,xs+u*Math.tan(a),sy+u,C.dim,1.5,[3,7]);
+  Ln(c,ox,sy-u,xs,sy,C.r,3);Ln(c,xs,sy,xb,sy+u,C.r,3);
+  c.strokeStyle=C.photon;c.lineWidth=2;c.beginPath();c.arc(xs,sy,40,-Math.PI/2-a,-Math.PI/2);c.stroke();c.strokeStyle=C.g;c.beginPath();c.arc(xs,sy,48,Math.PI/2-r,Math.PI/2);c.stroke();
+  T(c,'입사각 '+s.i+'°',xs-12,sy-48,13,C.photon,'right');T(c,'굴절각 '+(r*180/Math.PI).toFixed(0)+'°',xs+14,sy+66,13,C.g);
+  c.fillStyle=C.hull2;rr(c,ox-18,sy-u-12,36,22,5);c.fill();c.strokeStyle=C.line;c.stroke();T(c,'레이저',ox,sy-u-18,12,C.dim,'center');
+  if(hit)glow(c,gx,sy+u,40,'63,224,138',.8);
+  c.fillStyle=hit?C.g:C.photon;c.beginPath();c.moveTo(gx,sy+u-16);c.lineTo(gx+12,sy+u-4);c.lineTo(gx,sy+u+6);c.lineTo(gx-12,sy+u-4);c.fill();
+  dot(c,xb,sy+u,5,C.r);
+ }
+},
+lens:{
+ init:()=>({el:'cvxL',u:40}),
+ controls:[
+  {type:'select',key:'el',label:'광학 기구',options:[{v:'cvxL',label:'볼록 렌즈'},{v:'ccvL',label:'오목 렌즈'},{v:'ccvM',label:'오목 거울'},{v:'cvxM',label:'볼록 거울'}]},
+  {type:'range',key:'u',label:'물체까지의 거리 (초점 거리 15 cm)',min:5,max:60,step:1,unit:' cm'}],
+ read(s){const i=lensImg(s);return i.v==null?'초점 위: 상이 생기지 않는다':(i.m>0?'바로 선 상':'거꾸로 선 상')+' · 물체의 '+Math.abs(i.m).toFixed(1)+'배'},
+ steps:[
+  {text:'볼록 렌즈로, 물체보다 크면서 거꾸로 선 상을 만들자.',ok:s=>{const i=lensImg(s);return s.el==='cvxL'&&i.v!=null&&i.m<0&&Math.abs(i.m)>1.05},
+   fail:s=>{const i=lensImg(s);return s.el!=='cvxL'?'먼저 볼록 렌즈를 고르자.':i.v==null||i.m>0?'지금은 바로 선 상이거나 상이 없다. 물체를 초점(F)보다 멀리 옮기자.':'상이 물체보다 작다. 물체를 초점 쪽으로 더 가까이(초점 바깥까지만) 옮기자.'},
+   hint:'물체가 초점 거리(15 cm)와 그 2배(30 cm) 사이에 있을 때다.',
+   explain:'볼록 렌즈는 빛을 모은다. 물체가 초점 바깥에 있으면 거꾸로 선 상이 생기고, 초점에 가까울수록 상이 커진다.'},
+  {text:'돋보기처럼, 물체보다 크고 바로 선 상을 만들자. 볼록 렌즈와 오목 거울 어느 쪽이든 좋다.',ok:s=>{const i=lensImg(s);return i.v!=null&&i.m>1.05},
+   fail:s=>(s.el==='ccvL'||s.el==='cvxM')?'오목 렌즈와 볼록 거울은 작은 상만 만든다. 볼록 렌즈나 오목 거울로 바꾸자.':'물체를 초점(F) 안쪽으로 가까이 가져가자.',
+   hint:'물체를 초점 거리 15 cm보다 가까이 둔다.',
+   explain:'볼록 렌즈(돋보기)와 오목 거울(화장 거울)은 물체가 초점 안쪽에 있을 때 크고 바로 선 상을 만든다.'},
+  {text:'매장 천장의 거울처럼, 물체가 어디에 있든 항상 작고 바로 선 상이 생기는 거울로 바꾸자. 거리를 바꿔 가며 확인한 뒤 확인을 누른다.',ok:s=>s.el==='cvxM',
+   fail:s=>s.el==='ccvL'?'상의 모습은 맞지만 이것은 렌즈다. 거울 중에서 찾아보자.':'거리를 바꾸면 거꾸로 선 상이 생기기도 한다. 다른 거울을 골라 보자.',
+   hint:'빛을 퍼뜨리는, 가운데가 볼록 튀어나온 거울이다.',
+   explain:'볼록 거울은 항상 작고 바로 선 상을 만들어 넓은 범위를 보여 준다. 도로 모퉁이, 자동차 옆 거울에 쓰인다. 오목 렌즈도 같은 모양의 상을 만든다.'}
+ ],
+ draw(c,w,h,s){
+  const I=lensImg(s),cx=w/2,cy=h*.5,kx=w/140,ky=Math.min(h*.022,kx*1.7),X=x=>cx+x*kx,Y=y=>cy-y*ky,Hh=h*.36,F=1e3;
+  const ray=(ax,ay,bx,by,col,dash)=>Ln(c,X(ax),Y(ay),X(bx),Y(by),col,dash?1.5:2,dash?[5,6]:null);
+  if(!I.isL){c.fillStyle='rgba(0,0,0,.3)';c.fillRect(cx,0,w-cx,h);T(c,'거울 뒤',w-12,22,12,C.dim,'right')}
+  Ln(c,0,cy,w,cy,C.line,1.5);
+  const fx=I.isL?[-15,15]:[I.f>0?-15:15];fx.forEach(x=>{dot(c,X(x),cy,4,C.photon);T(c,'F',X(x),cy+20,13,C.photon,'center')});
+  if(I.isL){c.fillStyle='rgba(90,147,255,.3)';c.strokeStyle=C.b;c.lineWidth=2;c.beginPath();if(s.el==='cvxL')c.ellipse(cx,cy,11,Hh,0,0,TAU);else{c.moveTo(cx-11,cy-Hh);c.lineTo(cx+11,cy-Hh);c.quadraticCurveTo(cx-3,cy,cx+11,cy+Hh);c.lineTo(cx-11,cy+Hh);c.quadraticCurveTo(cx+3,cy,cx-11,cy-Hh)}c.fill();c.stroke()}
+  else{const d=s.el==='ccvM'?-11:11;c.strokeStyle='#cfd6ff';c.lineWidth=5;c.beginPath();c.moveTo(cx+d,cy-Hh);c.quadraticCurveTo(cx-d,cy,cx+d,cy+Hh);c.stroke()}
+  const u=I.u,ho=10,y=C.photon;
+  ray(-u,ho,0,ho,y);
+  if(I.v!=null){
+   const real=I.v>0,dx=real?I.ix:-I.ix,dy=real?I.hi-ho:ho-I.hi;ray(0,ho,dx*F,ho+dy*F,y);
+   if(I.isL){ray(-u,ho,u*F,-ho*F,C.g)}else{ray(-u,ho,0,0,C.g);ray(0,0,-u*F,-ho*F,C.g)}
+   if(!real){ray(0,ho,I.ix,I.hi,y,1);ray(I.isL?-u:0,I.isL?ho:0,I.ix,I.hi,C.g,1)}
+   c.save();if(!real)c.globalAlpha=.75;arrow(c,X(I.ix),cy,X(I.ix),Y(I.hi),C.r,5);c.restore();
+   T(c,'상',clamp(X(I.ix),20,w-20),clamp(Y(I.hi)+(I.hi>0?-10:22),16,h-44),15,C.r,'center',1);
+  }else{const d=I.isL?1:-1;ray(0,ho,d*15*F,ho-ho*F,y);if(I.isL)ray(-u,ho,u*F,-ho*F,C.g);else{ray(-u,ho,0,0,C.g);ray(0,0,-u*F,-ho*F,C.g)}}
+  arrow(c,X(-u),cy,X(-u),Y(ho),C.ink,5);T(c,'물체',X(-u),cy+20,13,C.ink,'center');
+ }
+},
+color:{
+ init:()=>({r:0,g:0,b:0,target:[1,1,0]}),
+ controls:[{type:'toggle',label:'조명 켜기',items:[{key:'r',label:'빨강',cls:'tr'},{key:'g',label:'초록',cls:'tg'},{key:'b',label:'파랑',cls:'tb'}]}],
+ name:s=>['꺼짐','파랑','초록','청록','빨강','자홍','노랑','흰색'][s.r*4+s.g*2+s.b],
+ read(s){return '합성한 빛: '+this.name(s)},
+ steps:[
+  {enter:s=>{s.target=[1,1,0];s.r=s.g=s.b=0},text:'무대 조명 세 개 중 필요한 것만 켜서 노란색 빛을 만들자.',ok:s=>s.r&&s.g&&!s.b,
+   fail:()=>'목표 색과 다르다. 가운데 겹친 부분의 색을 목표 색과 비교해 보자.',hint:'노랑은 파랑이 빠진 색이다.',
+   explain:'빨강 + 초록 = 노랑. 물감과 달리 빛은 섞을수록 밝아진다.'},
+  {enter:s=>{s.target=[0,1,1];s.r=s.g=s.b=0},text:'이번에는 청록색 빛을 만들자.',ok:s=>!s.r&&s.g&&s.b,
+   fail:()=>'목표 색과 다르다. 다른 조합을 켜 보자.',hint:'청록은 빨강이 빠진 색이다.',
+   explain:'초록 + 파랑 = 청록. 남은 조합인 빨강 + 파랑은 자홍이 된다.'},
+  {enter:s=>{s.target=null},text:'휴대 전화 화면의 화소 하나가 흰색으로 보이려면?',options:['빨강·초록·파랑 빛을 모두 켠다','세 가지 빛을 모두 끈다','흰색 빛을 내는 화소를 따로 켠다'],answer:0,
+   hint:'조명 세 개를 모두 켜면 가운데가 어떤 색이 되는지 보자.',
+   explain:'빛의 삼원색을 모두 합성하면 흰색이 된다. 화면은 화소마다 빨강·초록·파랑의 밝기를 조절해 모든 색을 표현한다.'}
+ ],
+ draw(c,w,h,s){
+  const cx=w*.56,cy=h*.5,R=Math.min(w,h)*.27,o=R*.6;
+  dot(c,cx,cy,R*1.9,'#000');
+  c.save();c.globalCompositeOperation='lighter';
+  if(s.r)dot(c,cx,cy-o,R,'#ff0000');if(s.g)dot(c,cx-o*.87,cy+o*.5,R,'#00ff00');if(s.b)dot(c,cx+o*.87,cy+o*.5,R,'#0000ff');c.restore();
+  const sw=(x,y,rgb,lab)=>{dot(c,x,y,24,rgb);c.strokeStyle=C.ink;c.lineWidth=2;c.beginPath();c.arc(x,y,24,0,TAU);c.stroke();T(c,lab,x,y+44,13,C.dim,'center')};
+  if(s.target)sw(44,46,`rgb(${s.target.map(v=>v*255).join(',')})`,'목표 색');
+  sw(44,s.target?132:46,`rgb(${s.r*255},${s.g*255},${s.b*255})`,'합성한 색');
+ }
+},
+parallax:{
+ init:()=>({d:5,e:'1'}),
+ controls:[{type:'range',key:'d',label:'별까지의 거리',min:1,max:10,step:.5,unit:' pc'},
+  {type:'select',key:'e',label:'관측 시기',options:[{v:'1',label:'1월 (지구 E₁)'},{v:'2',label:'7월 (지구 E₂)'}]}],
+ read:s=>'연주 시차 p = '+(1/s.d).toFixed(2)+'″ · 거리 '+s.d+' pc',
+ steps:[
+  {text:'관측 시기를 바꿔 별이 배경 별 사이에서 움직이는 것을 확인하고, 연주 시차가 0.5″인 거리를 찾자.',ok:s=>s.d===2,
+   fail:s=>s.d>2?'연주 시차가 0.5″보다 작다. 별을 더 가까이 가져오자.':'연주 시차가 0.5″보다 크다. 별을 조금 멀리 보내자.',
+   hint:'거리(pc) = 1 ÷ 연주 시차(″)',explain:'연주 시차 0.5″인 별의 거리는 1 ÷ 0.5 = 2 pc. 연주 시차는 6개월 동안 별이 움직여 보인 각의 절반이다.'},
+  {enter:s=>{s.d=4},text:'연주 시차가 0.1″인 별은 얼마나 멀리 있을까? 그 거리로 옮기자.',ok:s=>s.d===10,
+   fail:s=>'지금 연주 시차는 '+(1/s.d).toFixed(2)+'″다. 더 작아져야 한다.',hint:'1 ÷ 0.1 = ?',
+   explain:'별이 멀수록 연주 시차가 작아져 측정하기 어렵다. 그래서 연주 시차는 비교적 가까운 별의 거리를 잴 때 쓴다.'},
+  {text:'별 A의 연주 시차는 0.2″, 별 B는 0.05″다. 더 가까운 별과 그 거리는?',options:['별 A, 5 pc','별 A, 20 pc','별 B, 5 pc','별 B, 20 pc'],answer:0,
+   hint:'연주 시차가 클수록 가까운 별이다.',explain:'연주 시차가 큰 A가 더 가깝다. A는 1 ÷ 0.2 = 5 pc, B는 1 ÷ 0.05 = 20 pc.'}
+ ],
+ draw(c,w,h,s){
+  starfield(c,w,h);
+  const wl=w*.6,sx=wl/2,sy=h*.8,rx=wl*.22,top=h*.1,stY=sy-(46+s.d*(sy-top-80)/10),e1=sx-rx,e2=sx+rx,on=s.e==='1';
+  c.strokeStyle=C.line;c.lineWidth=1.5;c.beginPath();c.ellipse(sx,sy,rx,12,0,0,TAU);c.stroke();
+  const far=(ex)=>{const k=(top-sy)/(stY-sy);return ex+(sx-ex)*k};
+  Ln(c,e1,sy,far(e1),top,on?C.photon:C.line,on?2:1.2,on?null:[5,6]);Ln(c,e2,sy,far(e2),top,on?C.line:C.photon,on?1.2:2,on?[5,6]:null);
+  Ln(c,sx,sy,sx,stY,C.line,1,[3,6]);
+  glow(c,sx,sy,26,'255,212,71',.8);dot(c,sx,sy,8,C.photon);T(c,'태양',sx,sy+30,12,C.dim,'center');
+  dot(c,e1,sy,6,on?C.b:C.line);dot(c,e2,sy,6,on?C.line:C.b);T(c,'E₁ 1월',e1,sy+30,12,C.dim,'center');T(c,'E₂ 7월',e2,sy+30,12,C.dim,'center');
+  glow(c,sx,stY,16,'255,255,255',.9);dot(c,sx,stY,4,'#fff');T(c,'별',sx+12,stY+4,13,C.ink);
+  const ang=Math.atan(rx/(sy-stY));c.strokeStyle=C.g;c.lineWidth=2;c.beginPath();c.arc(sx,stY,34,Math.PI/2-ang,Math.PI/2);c.stroke();T(c,'p',sx+16,stY+50,15,C.g,'left',1);
+  T(c,'멀리 있는 배경 별',sx,top-8,12,C.dim,'center');
+  const vx=wl+12,vw=w-vx-12,vh=Math.min(vw,h*.6),vy=h*.14,mx=vx+vw/2,my=vy+vh/2,sh=vw*.36/s.d;
+  c.save();c.beginPath();c.arc(mx,my,Math.min(vw,vh)/2,0,TAU);c.fillStyle='#03040e';c.fill();c.strokeStyle=C.line;c.lineWidth=3;c.stroke();c.clip();
+  const R=rng(5);for(let i=0;i<40;i++){c.fillStyle='rgba(238,241,255,.6)';c.fillRect(vx+R()*vw,vy+R()*vh,1.6,1.6)}
+  dot(c,mx+(on?-sh:sh),my,4,'rgba(255,255,255,.25)');glow(c,mx+(on?sh:-sh),my,14,'255,255,255',.9);dot(c,mx+(on?sh:-sh),my,4,'#fff');
+  Ln(c,mx-sh,my+22,mx+sh,my+22,C.g,2);c.restore();
+  T(c,'망원경으로 본 하늘',mx,vy-8,12,C.dim,'center');T(c,'6개월 동안 움직인 각 = 2p',mx,vy+vh+20,12,C.g,'center');
+ }
+},
+bright:{
+ init:()=>({d:1}),
+ controls:[{type:'range',key:'d',label:'별에서 떨어진 거리',min:1,max:4,step:1,unit:'배'}],
+ read:s=>'빛이 '+s.d*s.d+'칸에 퍼짐 → 한 칸의 밝기 '+(s.d===1?'1':'1/'+s.d*s.d),
+ steps:[
+  {text:'거리를 바꾸면 같은 양의 별빛이 몇 칸에 퍼지는지 살펴보자. 한 칸의 밝기가 1/4이 되는 거리는?',ok:s=>s.d===2,
+   fail:s=>'지금 한 칸의 밝기는 '+(s.d===1?'1':'1/'+s.d*s.d)+'이다.',hint:'빛이 4칸에 나누어 퍼지는 거리를 찾는다.',
+   explain:'거리가 2배가 되면 빛이 가로 2 × 세로 2 = 4칸에 퍼져, 한 칸이 받는 빛은 1/4이 된다.'},
+  {text:'한 칸의 밝기가 1/9이 되는 거리로 옮기자.',ok:s=>s.d===3,fail:s=>'지금은 '+s.d*s.d+'칸에 퍼져 있다. 9칸이 되어야 한다.',hint:'3 × 3 = 9',
+   explain:'별의 밝기는 거리의 제곱에 반비례한다. 거리 3배 → 밝기 1/9.'},
+  {text:'같은 별이 지금보다 10배 먼 곳으로 옮겨진다면 겉보기 밝기는?',options:['1/10로 줄어든다','1/20로 줄어든다','1/100로 줄어든다','변하지 않는다'],answer:2,
+   hint:'거리의 제곱에 반비례한다.',explain:'10² = 100이므로 밝기는 1/100이 된다. 별이 어둡게 보이는 까닭은 실제로 어두워서일 수도, 멀어서일 수도 있다.'}
+ ],
+ draw(c,w,h,s){
+  starfield(c,w,h);
+  const x0=w*.09,cy=h*.47,S=Math.min(h*.19,w*.055),gap=(w*.86-S*1.6)/4;
+  c.fillStyle='rgba(255,212,71,.1)';c.beginPath();c.moveTo(x0,cy);c.lineTo(x0+gap*4,cy-2*S);c.lineTo(x0+gap*4+S*1.4,cy-2*S);c.lineTo(x0+gap*4+S*1.4,cy+2*S);c.lineTo(x0+gap*4,cy+2*S);c.fill();
+  for(let j=1;j<=4;j++){const px=x0+gap*j,sd=j*S,ww=sd*.35,act=j===s.d;
+   for(let a=0;a<j;a++)for(let b=0;b<j;b++){const cw=ww/j,chh=sd/j,x=px+a*cw,y=cy-sd/2+b*chh;if(act){c.fillStyle='rgba(255,212,71,'+(.95/(j*j)+.04)+')';c.fillRect(x,y,cw,chh)}c.strokeStyle=act?C.photon:C.line;c.lineWidth=act?1.5:1;c.strokeRect(x,y,cw,chh)}
+   T(c,j+'배',px+ww/2,cy+2*S+24,14,act?C.photon:C.dim,'center',1);}
+  glow(c,x0,cy,40,'255,244,200',.95);dot(c,x0,cy,8,'#fff');T(c,'별',x0,cy+56,13,C.dim,'center');
+ }
+},
+magnitude:{
+ init:()=>({d:1}),
+ controls:[{type:'select',key:'d',label:'별까지의 거리',options:[{v:1,label:'1 pc'},{v:10,label:'10 pc'},{v:100,label:'100 pc'},{v:1000,label:'1000 pc'}]}],
+ m:s=>5*Math.log10(s.d/10),
+ read(s){const m=this.m(s);return '겉보기 등급 '+m.toFixed(1)+' · 절대 등급 0.0'},
+ steps:[
+  {text:'절대 등급이 0.0인 별이 있다. 겉보기 등급이 절대 등급과 같아지는 거리로 별을 옮기자.',ok:s=>s.d===10,
+   fail:s=>'겉보기 등급이 '+SIMS.magnitude.m(s).toFixed(1)+'등급이다. 절대 등급 0.0과 같아져야 한다.',hint:'절대 등급은 별이 일정한 거리에 있다고 가정했을 때의 밝기다. 그 거리는?',
+   explain:'절대 등급은 별을 10 pc 거리에 두었을 때의 겉보기 등급이다. 별의 실제 밝기를 비교할 때 쓴다.'},
+  {text:'10 pc에 있을 때보다 100배 어둡게 보이는 거리로 옮기고, 등급이 얼마나 변하는지 보자.',ok:s=>s.d===100,
+   fail:s=>s.d<100?'아직 충분히 어두워지지 않았다.':'너무 멀다. 100배가 아니라 10000배 어두워졌다.',hint:'밝기는 거리의 제곱에 반비례한다. 거리가 몇 배가 되면 1/100이 될까?',
+   explain:'거리 10배 → 밝기 1/100 → 등급은 5 커진다. 5등급 차이가 100배, 1등급 차이는 약 2.5배다. 등급 숫자가 클수록 어둡다.'},
+  {text:'별 A(겉보기 1, 절대 -3), 별 B(겉보기 2, 절대 2), 별 C(겉보기 4, 절대 6). 10 pc보다 가까이 있는 별은?',options:['별 A','별 B','별 C'],answer:2,
+   hint:'장치에서 1 pc로 옮겼을 때 겉보기 등급과 절대 등급 중 어느 쪽이 작은지 보자.',
+   explain:'가까운 별은 실제보다 밝게 보여 겉보기 등급이 절대 등급보다 작다. C만 4 < 6이다. 실제로 가장 밝은 별은 절대 등급이 가장 작은 A.'}
+ ],
+ draw(c,w,h,s){
+  starfield(c,w,h);const m=this.m(s),cx=w*.38,cy=h*.46,r=clamp(42*Math.pow(10,-.08*m)*h/320,3,h*.42);
+  glow(c,cx,cy,r,'255,255,255',.95);dot(c,cx,cy,Math.max(1.5,r*.12),'#fff');
+  T(c,'밤하늘에서 본 별',cx,h-52,13,C.dim,'center');
+  const bx=w*.8,t0=h*.1,t1=h*.82,Y=v=>t0+(v+6)/17*(t1-t0);
+  Ln(c,bx,t0,bx,t1,C.line,3);for(let v=-5;v<=10;v+=5){Ln(c,bx-6,Y(v),bx+6,Y(v),C.dim,1.5);T(c,v+'',bx-12,Y(v)+4,12,C.dim,'right')}
+  T(c,'밝다',bx,t0-8,12,C.dim,'center');T(c,'어둡다',bx,t1+18,12,C.dim,'center');
+  dot(c,bx,Y(0),7,C.b);T(c,'절대 0.0',bx+14,Y(0)+(Math.abs(m)<.1?-8:4),13,C.b);
+  dot(c,bx,Y(m),7,C.photon);T(c,'겉보기 '+m.toFixed(1),bx+14,Y(m)+(Math.abs(m)<.1?16:4),13,C.photon);
+ }
+},
+temp:{
+ init:()=>({t:10000}),
+ controls:[{type:'range',key:'t',label:'별의 표면 온도',min:3000,max:32000,step:500,unit:' K'}],
+ read:s=>{const k=tclass(s.t);return k[0]+' 별 · 예: '+k[1]},
+ steps:[
+  {text:'표면 온도를 조절해 베텔게우스와 같은 적색 별을 만들자.',ok:s=>tclass(s.t)[0]==='적색',fail:s=>'지금은 '+tclass(s.t)[0]+' 별이다. 온도를 더 낮춰 보자.',
+   hint:'붉은 별은 표면 온도가 낮다. 3500 K 이하로 내려 보자.',explain:'표면 온도가 낮은 별은 붉게 보인다. 베텔게우스와 안타레스가 대표적인 적색 별이다.'},
+  {text:'이번에는 태양과 같은 황색 별을 만들자.',ok:s=>tclass(s.t)[0]==='황색',fail:s=>'지금은 '+tclass(s.t)[0]+' 별이다. '+(s.t>6000?'온도를 낮춰 보자.':'온도를 높여 보자.'),
+   hint:'태양의 표면 온도는 약 6000 K다.',explain:'태양은 표면 온도가 약 6000 K인 황색 별이다. 별의 색을 보면 표면 온도를 알 수 있다.'},
+  {text:'리겔(청백색), 태양(황색), 안타레스(적색) 중 표면 온도가 가장 높은 별은?',options:['리겔','태양','안타레스'],answer:0,
+   hint:'온도를 끝까지 올리면 별이 어떤 색이 되는지 보자.',explain:'표면 온도는 청색 > 청백색 > 백색 > 황백색 > 황색 > 주황색 > 적색 순이다. 리겔이 가장 뜨겁다.'}
+ ],
+ draw(c,w,h,s){
+  starfield(c,w,h);const col=tcol(s.t).join(','),cx=w/2,cy=h*.42,R=Math.min(w,h)*.2;
+  glow(c,cx,cy,R*2.1,col,.55);dot(c,cx,cy,R,'rgb('+col+')');glow(c,cx-R*.3,cy-R*.3,R*.7,'255,255,255',.35);
+  const bx=w*.1,bw=w*.8,by=h*.8,P=t=>bx+Math.log(t/3000)/Math.log(32000/3000)*bw;
+  const g=c.createLinearGradient(bx,0,bx+bw,0);TC.forEach(a=>g.addColorStop((P(a[0])-bx)/bw,'rgb('+a[1].join(',')+')'));c.fillStyle=g;rr(c,bx,by,bw,14,7);c.fill();
+  [3000,6000,10000,30000].forEach(t=>T(c,t+' K',P(t),by+32,11,C.dim,'center'));
+  const mx=P(s.t);c.fillStyle=C.ink;c.beginPath();c.moveTo(mx,by-2);c.lineTo(mx-8,by-14);c.lineTo(mx+8,by-14);c.fill();
+ }
+},
+galaxy:{
+ init(){const R=rng(7),p={glob:[],open:[],dark:[],map:[]};
+  for(let i=0;i<520;i++){const a=R()*TAU,r=Math.pow(R(),2.2)*.9;p.glob.push([Math.cos(a)*r,Math.sin(a)*r,.6+R()*1.4,R()])}
+  for(let i=0;i<50;i++)p.open.push([(R()-.5)*1.5,(R()-.5)*1.3,1+R()*2.6,R()]);
+  for(let i=0;i<220;i++)p.dark.push([(R()-.5)*2.8,(R()-.5)*2.1,.6+R()*1.6,R()]);
+  for(let i=0;i<700;i++){const t=R(),a=(i%2)*Math.PI+t*5.2+(R()-.5)*.5,r=.14+.86*t+(R()-.5)*.08;p.map.push([Math.cos(a)*r,Math.sin(a)*r,.5+R()*1.2,R()])}
+  for(let i=0;i<220;i++){const a=R()*TAU,r=Math.pow(R(),1.6)*.2;p.map.push([Math.cos(a)*r*1.5,Math.sin(a)*r*.8,.6+R()*1.2,2])}
+  return{view:'glob',p,pick:null,solved:false}},
+ geo:(w,h)=>({cx:w/2,cy:h*.42,R:Math.min(w*.36,h*.35)}),
+ read:s=>s.view==='map'?'지름 약 30 kpc (약 10만 광년)':'탐사선 망원경 화면',
+ tap(s,x,y,w,h){if(s.view!=='map')return;const g=this.geo(w,h);s.pick=[(x-g.cx)/g.R,(y-g.cy)/g.R]},
+ steps:[
+  {enter:s=>{s.view='glob'},text:'망원경에 잡힌 천체다. 수만~수십만 개의 별이 공 모양으로 빽빽하게 모여 있다. 이 천체는?',options:['산개 성단','구상 성단','방출 성운'],answer:1,
+   hint:'공(구) 모양이라는 점이 이름에 들어 있다.',explain:'구상 성단은 늙고 붉은 별이 공 모양으로 빽빽하게 모인 집단으로, 주로 은하 중심부와 은하 원반 주위에 분포한다. 산개 성단은 젊고 푸른 별이 엉성하게 모여 있다.'},
+  {enter:s=>{s.view='dark'},text:'성간 물질이 뒤에서 오는 별빛을 가려 검게 보인다. 이런 성운은?',options:['방출 성운','반사 성운','암흑 성운'],answer:2,
+   hint:'빛을 내거나 반사하지 않고 가리기만 한다.',explain:'암흑 성운은 성간 물질이 뒤쪽 별빛을 가려 어둡게 보인다. 방출 성운은 스스로 빛을 내 붉게, 반사 성운은 주변 별빛을 반사해 파랗게 보인다.'},
+  {enter:s=>{s.view='map';s.pick=null},text:'위에서 본 우리은하다. 태양계가 있을 만한 곳을 화면에서 눌러 표시한 뒤 확인을 누르자.',
+   ok:s=>{if(!s.pick)return false;const r=Math.hypot(s.pick[0],s.pick[1]);return s.solved=r>=.42&&r<=.74},
+   fail:s=>{if(!s.pick)return '은하 그림 위를 눌러 위치를 표시하자.';const r=Math.hypot(s.pick[0],s.pick[1]);return r<.42?'그곳은 은하 중심부에 너무 가깝다. 태양계는 중심에 있지 않다.':'그곳은 은하 가장자리이거나 바깥이다. 조금 더 안쪽이다.'},
+   hint:'은하 반지름은 약 15 kpc, 태양계는 중심에서 약 8.5 kpc 떨어져 있다. 반지름의 절반을 조금 넘는 곳이다.',
+   explain:'태양계는 은하 중심에서 약 8.5 kpc(약 3만 광년) 떨어진 나선팔에 있다. 우리은하는 옆에서 보면 가운데가 볼록한 원반 모양이다.'}
+ ],
+ draw(c,w,h,s,t){
+  const U=Math.min(w,h)*.42,cx=w/2,cy=h/2,pts=s.p[s.view];
+  if(s.view==='map'){const g=this.geo(w,h);glow(c,g.cx,g.cy,g.R*.5,'255,226,160',.5);
+   for(const p of pts){c.fillStyle=p[3]===2?'rgba(255,230,170,.8)':p[3]>.5?'rgba(190,212,255,.75)':'rgba(238,241,255,.6)';c.fillRect(g.cx+p[0]*g.R,g.cy+p[1]*g.R,p[2],p[2])}
+   T(c,'위에서 본 모습',g.cx,g.cy-g.R-10,12,C.dim,'center');
+   const sy=h*.9;c.fillStyle='rgba(190,212,255,.5)';c.beginPath();c.ellipse(g.cx,sy,g.R,Math.max(3,h*.012),0,0,TAU);c.fill();c.fillStyle='rgba(255,230,170,.85)';c.beginPath();c.ellipse(g.cx,sy,g.R*.18,h*.04,0,0,TAU);c.fill();
+   T(c,'옆에서 본 모습',g.cx+g.R+8>w-90?w-10:g.cx+g.R+8,sy-14,12,C.dim,g.cx+g.R+8>w-90?'right':'left');
+   if(s.pick){const x=g.cx+s.pick[0]*g.R,y=g.cy+s.pick[1]*g.R;c.strokeStyle=s.solved?C.g:C.photon;c.lineWidth=3;c.beginPath();c.arc(x,y,12+Math.sin(t*5)*2,0,TAU);c.stroke();dot(c,x,y,3,C.photon);if(s.solved)T(c,'태양계',x+16,y+5,14,C.g,'left',1)}
+   return}
+  if(s.view==='dark')glow(c,cx,cy,U*1.6,'255,84,104',.28);
+  for(const p of pts){const x=cx+p[0]*U,y=cy+p[1]*U;
+   c.fillStyle=s.view==='glob'?`rgba(255,${190+p[3]*50|0},${130+p[3]*70|0},.85)`:s.view==='open'?`rgba(${170+p[3]*50|0},210,255,.95)`:'rgba(238,241,255,.8)';
+   if(s.view==='open'){glow(c,x,y,p[2]*5,'150,190,255',.5);dot(c,x,y,p[2],c.fillStyle='rgb(215,230,255)')}else c.fillRect(x,y,p[2],p[2])}
+  if(s.view==='glob')glow(c,cx,cy,U*.35,'255,220,170',.5);
+  if(s.view==='dark'){c.fillStyle='#04050d';c.beginPath();c.moveTo(cx-U*.5,cy+U*.9);c.bezierCurveTo(cx-U*.7,cy+U*.1,cx-U*.3,cy-U*.1,cx-U*.15,cy-U*.45);c.bezierCurveTo(cx-U*.1,cy-U*.8,cx+U*.45,cy-U*.75,cx+U*.3,cy-U*.35);c.bezierCurveTo(cx+U*.2,cy-U*.1,cx+U*.7,cy+U*.2,cx+U*.6,cy+U*.9);c.fill()}
+ }
+},
+expand:{
+ init:()=>({a:1,home:0,pick:-1,mode:'pick'}),
+ controls:[{type:'range',key:'a',label:'우주의 크기',min:1,max:2,step:.05,unit:'배',fmt:v=>v.toFixed(2)}],
+ read:s=>s.mode==='pick'?'은하를 눌러 선택':'은하를 누르면 기준 은하가 바뀐다',
+ k:(w,h)=>Math.min(w,h)*.22,
+ pos(s,i,w,h,a){const k=this.k(w,h);return[w/2+(GAL[i][0]-GAL[s.home][0])*a*k,h/2+(GAL[i][1]-GAL[s.home][1])*a*k]},
+ tap(s,x,y,w,h){let b=-1,bd=44;GAL.forEach((g,i)=>{const p=this.pos(s,i,w,h,s.a),d=Math.hypot(p[0]-x,p[1]-y);if(d<bd){bd=d;b=i}});if(b<0)return;if(s.mode==='pick'){if(b!==s.home)s.pick=b}else s.home=b},
+ steps:[
+  {enter:s=>{s.mode='pick';s.home=0;s.pick=-1;s.a=1},text:'우주의 크기를 키우며 화살표를 보자. 기준 은하(가운데)에서 가장 빠르게 멀어지는 은하를 눌러 고른 뒤 확인을 누르자.',ok:s=>s.pick===7,
+   fail:s=>s.pick<0?'은하를 하나 눌러 선택하자.':'더 긴 화살표를 가진 은하가 있다. 화살표 길이가 멀어진 거리다.',hint:'같은 시간 동안 가장 많이 움직인 은하, 곧 처음부터 가장 멀리 있던 은하다.',
+   explain:'우주가 팽창하면 멀리 있는 은하일수록 더 빠르게 멀어진다. 은하가 스스로 날아가는 것이 아니라 은하 사이의 공간이 늘어나는 것이다.'},
+  {enter:s=>{s.mode='home';s.pick=-1},text:'다른 은하를 눌러 기준을 바꾸고 다시 팽창시켜 보자. 그 은하에서 보면 다른 은하들은 어떻게 움직일까?',options:['모든 은하가 멀어진다','일부 은하는 가까워진다','우리은하만 멀어진다'],answer:0,
+   hint:'여러 은하를 기준으로 바꿔 가며 화살표 방향을 확인하자.',explain:'어느 은하에서 보더라도 다른 은하들은 모두 멀어지고, 먼 은하일수록 빨리 멀어진다.'},
+  {text:'그렇다면 팽창하는 우주의 중심은 어디일까?',options:['우리은하','태양','특별한 중심이 없다'],answer:2,
+   hint:'어느 은하를 기준으로 해도 결과가 같았다.',explain:'팽창하는 우주에는 특별한 중심이 없다. 과거로 거슬러 가면 우주는 한 점에 모여 있었고, 그 점이 폭발하듯 팽창해 지금의 우주가 되었다는 것이 대폭발 우주론이다.'}
+ ],
+ draw(c,w,h,s){
+  const k=this.k(w,h),sp=.25*s.a*k;c.strokeStyle='rgba(90,147,255,.22)';c.lineWidth=1;c.beginPath();
+  for(let x=w/2%sp;x<w;x+=sp){c.moveTo(x,0);c.lineTo(x,h)}for(let y=h/2%sp;y<h;y+=sp){c.moveTo(0,y);c.lineTo(w,y)}c.stroke();
+  GAL.forEach((g,i)=>{const p=this.pos(s,i,w,h,s.a),p0=this.pos(s,i,w,h,1),hm=i===s.home;
+   if(!hm&&s.a>1.04)arrow(c,p0[0],p0[1],p[0],p[1],C.photon,2);
+   c.save();c.translate(p[0],p[1]);c.rotate(i*1.3);glow(c,0,0,18,hm?'255,212,71':'190,212,255',.7);c.fillStyle=hm?C.photon:'#dfe6ff';c.beginPath();c.ellipse(0,0,13,5,0,0,TAU);c.fill();c.restore();
+   if(hm){c.strokeStyle=C.photon;c.lineWidth=2;c.beginPath();c.arc(p[0],p[1],22,0,TAU);c.stroke();T(c,'기준 은하',p[0],p[1]+40,12,C.photon,'center')}
+   if(i===s.pick){c.strokeStyle=C.g;c.lineWidth=3;c.beginPath();c.arc(p[0],p[1],22,0,TAU);c.stroke();T(c,'선택',p[0],p[1]-28,12,C.g,'center')}});
+ }
+},
+explore:{
+ init:()=>({v:7,sat:null,result:null}),
+ controls:[{type:'range',key:'v',label:'발사 속도',min:5,max:12,step:.1,unit:' km/s',fmt:v=>v.toFixed(1)},{type:'btn',label:'위성 발사',action:s=>SIMS.explore.launch(s)}],
+ launch(s){const k=Math.pow(s.v/7.8,2);s.result=k<.93?'crash':k>=2?'escape':k>1.516?'far':'orbit';s.sat={x:0,y:-1.15,vx:s.v/7.8*Math.sqrt(1/1.15),vy:0,trail:[],ang:0,pa:-Math.PI/2,done:false};beep(300,.3,'sawtooth',.05)},
+ msg:{crash:'속도가 모자라 지구로 떨어졌다.',orbit:'궤도 진입! 지구 둘레를 돌고 있다.',far:'너무 길쭉한 궤도라 한참 뒤에야 돌아온다.',escape:'지구 중력을 벗어났다. 다른 행성으로 가는 탐사선의 속도다.'},
+ read(s){return s.sat?this.msg[s.result]:'발사 속도를 정하고 발사하자'},
+ update(s,dt){const p=s.sat;if(!p||p.done)return;const n=Math.ceil(dt*1.6/.004);for(let i=0;i<n;i++){const r=Math.hypot(p.x,p.y),a=-1/(r*r*r);p.vx+=a*p.x*.004;p.vy+=a*p.y*.004;p.x+=p.vx*.004;p.y+=p.vy*.004;
+   const na=Math.atan2(p.y,p.x);let d=na-p.pa;if(d>Math.PI)d-=TAU;if(d<-Math.PI)d+=TAU;p.ang+=Math.abs(d);p.pa=na;
+   if(s.result==='crash'&&Math.hypot(p.x,p.y)<=1){p.done=true;beep(110,.3,'sawtooth',.06);break}
+   if(Math.hypot(p.x,p.y)>9){p.done=true;break}}
+  p.trail.push([p.x,p.y]);if(p.trail.length>700)p.trail.shift()},
+ steps:[
+  {text:'지구 대기의 방해를 받지 않고 먼 은하를 선명하게 관측하려면 무엇을 보내야 할까?',options:['우주 망원경','우주 정거장','행성 탐사 로봇','기상 위성'],answer:0,
+   hint:'지상 망원경은 대기 때문에 상이 흐려진다.',explain:'우주 망원경은 대기 밖에서 관측해 지상보다 훨씬 선명한 영상을 얻는다. 허블·제임스 웹 우주 망원경이 대표적이다.'},
+  {text:'사람이 오래 머물며 무중력 상태에서 실험과 관측을 하려면?',options:['인공위성','우주 정거장','우주 탐사선','전파 망원경'],answer:1,
+   hint:'사람이 생활할 수 있는 시설이다.',explain:'우주 정거장은 사람이 머물며 지상에서 하기 어려운 실험을 하는 곳이다. 우주 탐사선은 다른 천체까지 직접 가서 탐사한다.'},
+  {text:'마지막 임무. 인공위성이 지구를 한 바퀴 돌 수 있는 발사 속도를 찾아 발사하고, 한 바퀴를 돈 뒤 확인을 누르자.',ok:s=>!!s.sat&&s.result==='orbit'&&s.sat.ang>=TAU,
+   fail:s=>!s.sat?'먼저 위성 발사 버튼을 누르자.':s.result==='orbit'?'위성이 한 바퀴를 다 돌 때까지 지켜보자.':SIMS.explore.msg[s.result]+' 속도를 '+(s.result==='crash'?'높여':'낮춰')+' 다시 발사하자.',
+   hint:'이 높이에서는 약 7.8 km/s일 때 원 궤도를 돈다.',
+   explain:'인공위성은 알맞은 속도로 발사되면 지구로 떨어지지 않고 계속 돈다. 위성은 위치 정보, 기상 예보, 통신에 쓰이고, 수명이 끝난 위성과 파편은 우주 쓰레기가 된다.'}
+ ],
+ draw(c,w,h,s){
+  starfield(c,w,h);const cx=w/2,cy=h/2,R=Math.min(w,h)*.115;
+  glow(c,cx,cy,R*1.5,'90,147,255',.5);dot(c,cx,cy,R,'#2f6fe0');c.fillStyle=C.g;c.beginPath();c.ellipse(cx-R*.3,cy-R*.2,R*.35,R*.25,.5,0,TAU);c.fill();c.beginPath();c.ellipse(cx+R*.35,cy+R*.3,R*.25,R*.3,-.4,0,TAU);c.fill();
+  c.strokeStyle='rgba(169,176,220,.3)';c.setLineDash([4,6]);c.beginPath();c.arc(cx,cy,R*1.15,0,TAU);c.stroke();c.setLineDash([]);
+  T(c,'지구',cx,cy+5,14,'#fff','center',1);
+  const p=s.sat;if(!p){dot(c,cx,cy-R*1.15,5,C.photon);arrow(c,cx,cy-R*1.15,cx+20+s.v*5,cy-R*1.15,C.photon,2);return}
+  c.strokeStyle=C.photon;c.lineWidth=2;c.beginPath();p.trail.forEach((q,i)=>{const x=cx+q[0]*R,y=cy+q[1]*R;i?c.lineTo(x,y):c.moveTo(x,y)});c.stroke();
+  const x=cx+p.x*R,y=cy+p.y*R;if(s.result==='crash'&&p.done)glow(c,x,y,22,'255,84,104',.9);else{dot(c,x,y,5,'#fff');c.fillStyle=C.b;c.fillRect(x-12,y-2,7,4);c.fillRect(x+5,y-2,7,4)}
+ }
+}};
+
+
+/* ---------- 숨겨진 공간: 확장 미션 ---------- */
+const galPts=(()=>{const R=rng(21),b=[],c=[];
+ for(let i=0;i<260;i++){const t=R(),a=(i%2)*Math.PI+t*4.6+(R()-.5)*.4,r=.12+.88*t;b.push([Math.cos(a)*r,Math.sin(a)*r*.8])}
+ for(let i=0;i<260;i++){const t=R(),sg=i%2?1:-1,a=(i%2?0:Math.PI)+t*3.4,r=.42+.58*t;c.push([Math.cos(a)*r*1+0*sg+(R()-.5)*.05,Math.sin(a)*r*.8+(R()-.5)*.05])}
+ return{b,c}})();
+const hrPts=(()=>{const R=rng(33),a=[];
+ for(let i=0;i<46;i++){const t=R();a.push([t+(R()-.5)*.05,.12+t*.74+(R()-.5)*.07,t])}          // 주계열
+ for(let i=0;i<9;i++)a.push([.72+R()*.2,.14+R()*.14,.85]);                                      // 거성
+ for(let i=0;i<6;i++)a.push([.14+R()*.16,.84+R()*.08,.15]);                                     // 백색 왜성
+ return a})();
+const HID={
+straight:{title:'바늘구멍 사진기',intro:'작은 구멍을 지난 빛은 곧게 나아가며 위아래가 엇갈려, 스크린에 거꾸로 선 상을 만든다.',
+ init:()=>({d:50}),controls:[{type:'range',key:'d',label:'구멍에서 스크린까지의 거리',min:10,max:60,step:5,unit:' cm'}],
+ read:s=>'상의 높이 '+(20*s.d/40).toFixed(1)+' cm (물체 20 cm)',
+ steps:[{text:'높이 20 cm인 물체가 구멍에서 40 cm 앞에 있다. 스크린을 옮겨 상의 높이를 물체의 절반(10 cm)으로 만들자.',ok:s=>s.d===20,
+  fail:()=>'상의 높이가 10 cm가 아니었다.',explain:'상의 크기 : 물체의 크기 = 스크린까지의 거리 : 물체까지의 거리. 스크린이 20 cm에 있을 때 상이 절반이 된다. 닮은 삼각형의 비례 관계다.'}],
+ draw(c,w,h,s){const k=Math.min(w*.82/100,h*.6/40),x0=(w-100*k)/2,px=x0+40*k,sx=px+s.d*k,cy=h*.47,hi=10*s.d/40;
+  Ln(c,px,cy-24*k,px,cy-4,C.ink,5);Ln(c,px,cy+4,px,cy+24*k,C.ink,5);
+  Ln(c,x0,cy-10*k,sx,cy+hi*k,C.photon,1.8);Ln(c,x0,cy+10*k,sx,cy-hi*k,C.g,1.8);
+  arrow(c,x0,cy+10*k,x0,cy-10*k,C.ink,5);Ln(c,sx,cy-24*k,sx,cy+24*k,C.dim,3);arrow(c,sx,cy-hi*k,sx,cy+hi*k,C.r,5);
+  T(c,'물체',x0,cy+10*k+20,13,C.ink,'center');T(c,'바늘구멍',px,cy+24*k+20,13,C.dim,'center');T(c,'스크린의 상',sx,cy-24*k-8,13,C.r,'center');}},
+reflect:{title:'잠망경',intro:'잠망경은 나란히 놓인 거울 두 장으로 빛을 두 번 반사시켜, 장애물 너머를 볼 수 있게 한다.',
+ init:()=>({a:30}),controls:[{type:'range',key:'a',label:'거울 두 장의 기울기',min:20,max:70,step:5,unit:'°'}],
+ read:s=>'첫 거울에서 빛이 꺾인 각 '+2*s.a+'°',
+ steps:[{text:'거울의 기울기를 조절해, 위쪽으로 들어온 빛이 통 속을 지나 아래쪽 눈에 들어가게 하자.',ok:s=>s.a===45,
+  fail:()=>'빛이 통의 벽에 부딪혀 눈에 닿지 못했다.',explain:'거울이 45° 기울면 입사각과 반사각이 모두 45°라 빛이 90° 꺾인다. 두 번 꺾인 빛은 처음과 나란한 방향으로 눈에 들어간다.'}],
+ draw(c,w,h,s){const cx=w/2,y1=h*.2,y2=h*.72,tw=44,a=rad(s.a),ca=Math.cos(a),sa=Math.sin(a),dx=Math.cos(2*a),dy=Math.sin(2*a),ok=s.a===45;
+  Ln(c,cx-tw,y1+34,cx-tw,y2+40,C.line,5);Ln(c,cx+tw,y1-40,cx+tw,y2-34,C.line,5);Ln(c,cx-tw,y1-40,cx+tw,y1-40,C.line,5);Ln(c,cx-tw,y2+40,cx+tw,y2+40,C.line,5);
+  [y1,y2].forEach(y=>Ln(c,cx-36*ca,y-36*sa,cx+36*ca,y+36*sa,'#cfd6ff',5));
+  Ln(c,cx-w*.36,y1,cx,y1,C.r,3);arrow(c,cx-w*.36,y1,cx-w*.2,y1,C.r,3);
+  if(ok){Ln(c,cx,y1,cx,y2,C.r,3);Ln(c,cx,y2,cx+w*.3,y2,C.r,3);glow(c,cx+w*.33,y2,26,'63,224,138',.7)}
+  else{let t=dy>0?(y2-y1)/dy:1e9;const tx=Math.abs(dx)>1e-6?tw/Math.abs(dx):1e9;t=Math.min(t,tx);const ex=cx+dx*t,ey=y1+dy*t;Ln(c,cx,y1,ex,ey,C.r,3);Ln(c,ex-7,ey-7,ex+7,ey+7,C.photon,3);Ln(c,ex-7,ey+7,ex+7,ey-7,C.photon,3)}
+  dot(c,cx+w*.33,y2,12,C.ink);dot(c,cx+w*.33-3,y2,5,'#10163c');T(c,'눈',cx+w*.33,y2+30,13,C.dim,'center');T(c,'물체에서 온 빛',cx-w*.28,y1-12,13,C.dim,'center');}},
+refract:{title:'전반사',intro:'빛이 물에서 공기로 나갈 때는 굴절각이 입사각보다 크다. 입사각이 어느 값을 넘으면 빛은 밖으로 나가지 못하고 모두 반사된다.',
+ init:()=>({i:20}),controls:[{type:'range',key:'i',label:'물속에서의 입사각',min:10,max:80,step:10,unit:'°'}],
+ read:s=>{const q=1.33*Math.sin(rad(s.i));return q>=1?'굴절 광선 없음 (전반사)':'굴절각 '+(Math.asin(q)*180/Math.PI).toFixed(0)+'°'},
+ steps:[{text:'입사각을 바꿔 가며 굴절 광선을 관찰하자. 전반사가 처음 일어나는 입사각(10° 단위)에 맞추고 확인을 누르자.',ok:s=>s.i===50,
+  fail:s=>s.i<50?'그 각도에서는 빛이 아직 물 밖으로 나간다.':'전반사는 맞지만, 더 작은 입사각에서 이미 시작된다.',
+  explain:'물의 임계각은 약 49°다. 입사각이 이보다 크면 전반사가 일어난다. 광섬유는 이 원리로 빛을 가두어 정보를 멀리 보낸다.'}],
+ draw(c,w,h,s){const sy=h*.4,px=w/2,R=Math.min(w*.4,h*.4),a=rad(s.i),q=1.33*Math.sin(a);
+  c.fillStyle='rgba(90,147,255,.26)';c.fillRect(0,sy,w,h-sy);Ln(c,0,sy,w,sy,'#9fc0ff',2);T(c,'공기',w-14,sy-12,14,C.dim,'right');T(c,'물',w-14,sy+24,14,'#9fc0ff','right');
+  Ln(c,px,sy-R,px,sy+R,C.dim,1.5,[6,6]);
+  Ln(c,px-R*Math.sin(a),sy+R*Math.cos(a),px,sy,C.r,3);
+  c.save();c.globalAlpha=q<1?.3:1;Ln(c,px,sy,px+R*Math.sin(a),sy+R*Math.cos(a),C.r,3);c.restore();
+  if(q<1){const r=Math.asin(q);c.save();c.globalAlpha=clamp(1.15-q*q*q*q,.25,1);Ln(c,px,sy,px+R*Math.sin(r),sy-R*Math.cos(r),C.r,3);c.restore()}
+  T(c,'입사각 '+s.i+'°',px-14,sy+R*.5,13,C.photon,'right');c.fillStyle=C.hull2;rr(c,px-R*Math.sin(a)-16,sy+R*Math.cos(a)-10,32,20,5);c.fill();}},
+lens:{title:'근시 교정',intro:'근시인 눈은 먼 곳에서 온 빛이 망막보다 앞에 모여, 먼 물체가 흐리게 보인다.',
+ init:()=>({el:'none'}),controls:[{type:'select',key:'el',label:'눈앞에 놓을 렌즈',options:[{v:'none',label:'없음'},{v:'cvx',label:'볼록 렌즈'},{v:'ccv',label:'오목 렌즈'}]}],
+ read:s=>s.el==='ccv'?'빛이 망막 위에 모인다':s.el==='cvx'?'빛이 망막에서 더 먼 앞쪽에 모인다':'빛이 망막 앞에 모인다',
+ steps:[{text:'눈앞에 교정 렌즈를 놓아 빛이 망막 위에 정확히 모이게 하자.',ok:s=>s.el==='ccv',fail:()=>'빛이 망막 위에 모이지 않았다.',
+  explain:'오목 렌즈는 빛을 퍼뜨려 상이 맺히는 위치를 뒤로 보낸다. 그래서 근시는 오목 렌즈로, 원시는 볼록 렌즈로 교정한다.'}],
+ draw(c,w,h,s){const ex=w*.64,cy=h*.47,Re=Math.min(h*.3,w*.19),el=ex-Re*.82,ret=ex+Re,gx=ex-Re*1.9,fx=s.el==='ccv'?ret:s.el==='cvx'?ex+Re*.05:ex+Re*.45,m=s.el==='ccv'?1.18:s.el==='cvx'?.84:1;
+  c.fillStyle='rgba(238,241,255,.08)';c.beginPath();c.arc(ex,cy,Re,0,TAU);c.fill();c.strokeStyle=C.ink;c.lineWidth=3;c.stroke();
+  c.strokeStyle=C.r;c.lineWidth=6;c.beginPath();c.arc(ex,cy,Re,-.7,.7);c.stroke();T(c,'망막',ret+10,cy+4,13,C.r);
+  c.fillStyle='rgba(90,147,255,.4)';c.beginPath();c.ellipse(el,cy,8,Re*.5,0,0,TAU);c.fill();T(c,'수정체',el,cy+Re*.5+18,12,C.dim,'center');
+  if(s.el!=='none'){c.fillStyle='rgba(90,147,255,.35)';c.strokeStyle=C.b;c.lineWidth=2;c.beginPath();if(s.el==='cvx')c.ellipse(gx,cy,9,Re*.6,0,0,TAU);else{const H=Re*.6;c.moveTo(gx-9,cy-H);c.lineTo(gx+9,cy-H);c.quadraticCurveTo(gx-2,cy,gx+9,cy+H);c.lineTo(gx-9,cy+H);c.quadraticCurveTo(gx+2,cy,gx-9,cy-H)}c.fill();c.stroke()}
+  [-.42,0,.42].forEach(o=>{const y0=cy+o*Re,y1=cy+o*Re*m;Ln(c,w*.04,y0,gx,y0,C.photon,2);Ln(c,gx,y0,el,y1,C.photon,2);Ln(c,el,y1,fx,cy,C.photon,2);if(fx<ret-2){const yr=cy-(y1-cy)*(ret-fx)/(fx-el);Ln(c,fx,cy,ret-3,yr,C.photon,2)}});
+  dot(c,fx,cy,5,s.el==='ccv'?C.g:C.photon);}},
+color:{title:'물체의 색',intro:'물체는 특정한 색의 빛만 반사하고 나머지는 흡수한다. 빨간 사과는 빨간빛만, 초록 잎은 초록빛만 반사한다.',
+ init:()=>({r:1,g:1,b:1}),controls:[{type:'toggle',label:'조명 켜기',items:[{key:'r',label:'빨강',cls:'tr'},{key:'g',label:'초록',cls:'tg'},{key:'b',label:'파랑',cls:'tb'}]}],
+ read:s=>'사과: '+(s.r?'빨강':'검정')+' · 잎: '+(s.g?'초록':'검정'),
+ steps:[{text:'조명을 골라 켜서, 사과는 검게 보이고 잎은 초록으로 보이게 하자.',ok:s=>!s.r&&!!s.g,fail:()=>'사과와 잎의 색이 조건과 달랐다.',
+  explain:'초록 조명 아래에서 빨간 사과는 반사할 빨간빛이 없어 검게 보인다. 물체의 색은 조명의 색과 물체가 반사하는 색이 함께 정한다.'}],
+ draw(c,w,h,s){const cx=w/2,cy=h*.5,R=Math.min(w,h)*.2;
+  c.fillStyle=`rgb(${s.r*70},${s.g*70},${s.b*70})`;c.fillRect(0,0,w,h);c.fillStyle='rgba(0,0,0,.35)';c.fillRect(0,cy+R*1.02,w,h);
+  dot(c,cx,cy,R,s.r?'#e0283a':'#0d0507');if(s.r)glow(c,cx-R*.3,cy-R*.35,R*.5,'255,255,255',.35);
+  Ln(c,cx,cy-R,cx+R*.1,cy-R*1.3,'#3a2a14',6);
+  c.fillStyle=s.g?'#2fc050':'#050d07';c.beginPath();c.ellipse(cx+R*.55,cy-R*1.25,R*.42,R*.18,-.4,0,TAU);c.fill();}},
+parallax:{title:'파섹과 광년',intro:'1 pc(파섹)은 약 3.26광년이다. 1광년은 빛이 1년 동안 가는 거리다.',
+ init:()=>({}),read:()=>'거리(pc) = 1 ÷ 연주 시차(″)',
+ steps:[{text:'연주 시차가 0.5″인 별에서 나온 빛이 지구에 도착하는 데 걸리는 시간은?',options:['약 1.6년','약 3.3년','약 6.5년','약 13년'],answer:2,
+  explain:'거리는 1 ÷ 0.5 = 2 pc, 광년으로는 2 × 3.26 ≈ 6.5광년이다. 지금 보는 그 별빛은 약 6.5년 전에 출발했다.'}],
+ draw(c,w,h,s,t){starfield(c,w,h);const y=h*.45,x1=w*.15,x2=w*.85;glow(c,x1,y,30,'255,255,255',.9);dot(c,x1,y,6,'#fff');dot(c,x2,y,14,'#2f6fe0');
+  c.strokeStyle=C.photon;c.lineWidth=2;c.beginPath();for(let x=x1+20;x<x2-20;x+=4)c.lineTo(x,y+Math.sin((x-t*90)*.08)*7);c.stroke();
+  T(c,'별 · 연주 시차 0.5″',x1,y+52,13,C.ink,'center');T(c,'지구',x2,y+40,13,C.ink,'center');T(c,'빛이 오는 데 걸린 시간 = ?',w/2,y-28,16,C.photon,'center',1);}},
+bright:{title:'실제 밝기 비교',intro:'별이 실제로 내보내는 빛의 양을 광도라고 한다. 겉보기 밝기는 광도가 클수록, 거리가 가까울수록 크다.',
+ init:()=>({}),read:()=>'밝기는 거리의 제곱에 반비례',
+ steps:[{text:'별 A와 B가 지구에서 똑같은 밝기로 보인다. B가 A보다 3배 멀리 있다면, B의 광도는 A의 몇 배일까?',options:['1/9배','1/3배','3배','9배'],answer:3,
+  explain:'3배 멀면 빛이 1/9로 약해진다. 그런데도 같은 밝기로 보이므로 B는 A보다 9배 많은 빛을 내고 있다.'}],
+ draw(c,w,h){starfield(c,w,h);const y=h*.45,x0=w*.1,u=w*.26;dot(c,x0,y,13,'#2f6fe0');T(c,'지구',x0,y+36,13,C.ink,'center');
+  [[1,'A'],[3,'B']].forEach(a=>{const x=x0+u*a[0];Ln(c,x0,y+60+a[0]*8,x,y+60+a[0]*8,C.line,2);glow(c,x,y,26,'255,244,200',.9);dot(c,x,y,5,'#fff');T(c,'별 '+a[1],x,y-34,15,C.photon,'center',1);T(c,'거리 '+a[0],x,y+84+a[0]*8,12,C.dim,'center')});}},
+magnitude:{title:'등급으로 거리 재기',intro:'겉보기 등급에서 절대 등급을 뺀 값이 클수록 먼 별이다. 이 값이 5이면 10 pc에 있을 때보다 100배 어둡게 보인다는 뜻이다.',
+ init:()=>({}),read:()=>'겉보기 등급 7 · 절대 등급 2',
+ steps:[{text:'겉보기 등급이 7, 절대 등급이 2인 별이 있다. 이 별까지의 거리는?',options:['10 pc','50 pc','100 pc','1000 pc'],answer:2,
+  explain:'등급 차 5는 밝기 100배 차이다. 밝기는 거리의 제곱에 반비례하므로, 이 별은 10 pc의 10배인 100 pc에 있다.'}],
+ draw(c,w,h){starfield(c,w,h);const x0=w*.12,x1=w*.88,y=h*.5,X=v=>x0+(v+1)/10*(x1-x0);Ln(c,x0,y,x1,y,C.line,3);
+  for(let v=0;v<=8;v++){Ln(c,X(v),y-6,X(v),y+6,C.dim,1.5);T(c,v+'',X(v),y+24,12,C.dim,'center')}
+  T(c,'밝다',x0,y-16,12,C.dim,'left');T(c,'어둡다',x1,y-16,12,C.dim,'right');
+  dot(c,X(2),y,8,C.b);T(c,'절대 등급 2',X(2),y-22,14,C.b,'center',1);dot(c,X(7),y,8,C.photon);T(c,'겉보기 등급 7',X(7),y-22,14,C.photon,'center',1);
+  Ln(c,X(2),y+44,X(7),y+44,C.g,2);T(c,'등급 차 5 = 밝기 100배',(X(2)+X(7))/2,y+66,13,C.g,'center');}},
+temp:{title:'색과 밝기로 별 분류',intro:'별을 표면 온도와 광도에 따라 점으로 찍으면 무리가 나뉜다. 대부분의 별은 왼쪽 위에서 오른쪽 아래로 이어지는 띠(주계열성)에 놓인다.',
+ init:()=>({}),read:()=>'가로: 표면 온도 · 세로: 광도',
+ steps:[{text:'별 A와 B는 둘 다 표면 온도가 낮은 붉은 별인데, A가 B보다 만 배나 밝다. 그 까닭은?',options:['A가 B보다 훨씬 크다','A의 표면 온도가 훨씬 높다','A가 B보다 지구에 가깝다'],answer:0,
+  explain:'온도가 같으면 같은 넓이에서 나오는 빛의 양도 같다. 그런데 광도가 훨씬 크다면 표면적이 훨씬 넓은 것이다. A는 적색 거성, B는 작은 주계열성이다. 광도는 실제 밝기라 거리와는 관계가 없다.'}],
+ draw(c,w,h){const x0=w*.14,x1=w*.9,y0=h*.08,y1=h*.8;Ln(c,x0,y0,x0,y1,C.dim,2);Ln(c,x0,y1,x1,y1,C.dim,2);
+  T(c,'광도 높음',x0-6,y0+10,12,C.dim,'right');T(c,'낮음',x0-6,y1,12,C.dim,'right');T(c,'표면 온도 높음',x0,y1+20,12,C.dim,'left');T(c,'낮음',x1,y1+20,12,C.dim,'right');
+  for(const p of hrPts){const col=tcol(30000-p[2]*27000);dot(c,x0+p[0]*(x1-x0),y0+p[1]*(y1-y0),3,'rgb('+col.join(',')+')')}
+  const A=[x0+.86*(x1-x0),y0+.16*(y1-y0)],B=[x0+.86*(x1-x0),y0+.76*(y1-y0)];
+  dot(c,A[0],A[1],9,'#ff6e42');T(c,'A',A[0]+16,A[1]+5,18,C.ink,'left',1);dot(c,B[0],B[1],5,'#ff6e42');T(c,'B',B[0]+14,B[1]+5,18,C.ink,'left',1);
+  T(c,'주계열성',x0+.42*(x1-x0),y0+.36*(y1-y0),12,C.dim,'left');}},
+galaxy:{title:'외부 은하의 분류',intro:'허블은 외부 은하를 모양에 따라 타원 은하, 정상 나선 은하, 막대 나선 은하, 불규칙 은하로 나누었다.',
+ init:()=>({}),read:()=>'A · B · C 은하',
+ steps:[{text:'세 은하 중 우리은하와 같은 종류는 어느 것일까?',options:['A: 나선팔이 없는 타원 모양','B: 둥근 중심부에서 나선팔이 뻗어 나옴','C: 중심을 가로지르는 막대 끝에서 나선팔이 뻗어 나옴'],answer:2,
+  explain:'우리은하는 중심부에 막대 구조가 있는 막대 나선 은하다. A는 타원 은하, B는 정상 나선 은하다.'}],
+ draw(c,w,h){starfield(c,w,h);const R=Math.min(w*.14,h*.3),cy=h*.45;
+  [.18,.5,.82].forEach((f,i)=>{const cx=w*f;T(c,'ABC'[i],cx,cy-R-14,20,C.photon,'center',1);
+   if(i===0){c.save();c.translate(cx,cy);c.scale(1,.68);glow(c,0,0,R,'255,226,170',.95);c.restore()}
+   else{const pts=i===1?galPts.b:galPts.c;c.fillStyle='rgba(200,218,255,.85)';for(const p of pts)c.fillRect(cx+p[0]*R,cy+p[1]*R,1.8,1.8);
+    if(i===1)glow(c,cx,cy,R*.3,'255,226,170',.95);else{c.save();c.translate(cx,cy);c.fillStyle='rgba(255,226,170,.9)';c.beginPath();c.ellipse(0,0,R*.44,R*.1,0,0,TAU);c.fill();c.restore();glow(c,cx,cy,R*.2,'255,226,170',.9)}}});}},
+expand:{title:'허블 법칙',intro:'은하의 후퇴 속도는 거리에 비례한다. 그래프로 그리면 원점을 지나는 직선이 된다.',
+ init:()=>({}),read:()=>'후퇴 속도 = 허블 상수 × 거리',
+ steps:[{text:'100 Mpc 떨어진 은하의 후퇴 속도는 7000 km/s, 200 Mpc 떨어진 은하는 14000 km/s다. 300 Mpc 떨어진 은하의 후퇴 속도는?',options:['7000 km/s','14000 km/s','21000 km/s','28000 km/s'],answer:2,
+  explain:'후퇴 속도는 거리에 비례하므로 3배 먼 은하는 3배 빠르게 멀어진다. 이 비례 상수(허블 상수)로 우주의 나이도 추정할 수 있다.'}],
+ draw(c,w,h){const x0=w*.16,x1=w*.9,y0=h*.1,y1=h*.78,X=d=>x0+d/350*(x1-x0),Y=v=>y1-v/26000*(y1-y0);
+  Ln(c,x0,y0,x0,y1,C.dim,2);Ln(c,x0,y1,x1,y1,C.dim,2);
+  [100,200,300].forEach(d=>{Ln(c,X(d),y1-5,X(d),y1+5,C.dim,1.5);T(c,d+'',X(d),y1+22,12,C.dim,'center')});T(c,'거리 (Mpc)',x1,y1+40,12,C.dim,'right');
+  [7000,14000].forEach(v=>{Ln(c,x0-5,Y(v),x0+5,Y(v),C.dim,1.5);T(c,v+'',x0-8,Y(v)+4,12,C.dim,'right')});T(c,'후퇴 속도 (km/s)',x0,y0-8,12,C.dim,'left');
+  Ln(c,X(0),Y(0),X(330),Y(23100),C.line,2,[6,6]);dot(c,X(100),Y(7000),7,C.photon);dot(c,X(200),Y(14000),7,C.photon);
+  c.strokeStyle=C.r;c.lineWidth=3;c.beginPath();c.arc(X(300),Y(21000),10,0,TAU);c.stroke();T(c,'?',X(300),Y(21000)-18,20,C.r,'center',1);}},
+explore:{title:'정지 궤도',intro:'인공위성은 높이 돌수록 한 바퀴 도는 데 오래 걸린다. 공전 주기가 지구 자전 주기와 같으면, 지상에서는 위성이 하늘의 한곳에 멈춘 것처럼 보인다.',
+ init:()=>({h:2000,t:0}),controls:[{type:'range',key:'h',label:'위성의 높이',min:2000,max:50000,step:2000,unit:' km'}],
+ T:s=>2*Math.PI*Math.sqrt(Math.pow(6371+s.h,3)/398600)/3600,
+ read(s){return '공전 주기 '+this.T(s).toFixed(1)+'시간 · 지구 자전 24시간'},
+ update(s,dt){s.t+=dt},
+ steps:[{text:'위성의 높이를 조절해 공전 주기를 지구 자전 주기(약 24시간)와 같게 만들자. 지상의 깃발과 위성이 나란히 돌면 성공이다.',ok:s=>Math.abs(HID.explore.T(s)-24)<.6,
+  fail:s=>HID.explore.T(s)<24?'위성이 지구 자전보다 빨리 돌았다.':'위성이 지구 자전보다 느리게 돌았다.',
+  explain:'높이 약 36000 km에서 공전 주기가 24시간이 된다. 이 정지 궤도의 위성은 늘 같은 지역 위에 있어 기상 관측과 방송 통신에 쓰인다.'}],
+ draw(c,w,h,s){starfield(c,w,h);const cx=w/2,cy=h*.48,R=Math.min(w,h)*.085,ro=R*(1.25+s.h/50000*3.6),ae=s.t*TAU/8-Math.PI/2,as=s.t*TAU/8*(24/this.T(s))-Math.PI/2;
+  c.strokeStyle='rgba(169,176,220,.35)';c.setLineDash([4,6]);c.beginPath();c.arc(cx,cy,ro,0,TAU);c.stroke();c.setLineDash([]);
+  glow(c,cx,cy,R*1.5,'90,147,255',.5);dot(c,cx,cy,R,'#2f6fe0');
+  Ln(c,cx+R*Math.cos(ae),cy+R*Math.sin(ae),cx+ro*Math.cos(ae),cy+ro*Math.sin(ae),'rgba(255,212,71,.35)',1.5,[3,5]);
+  Ln(c,cx+R*Math.cos(ae),cy+R*Math.sin(ae),cx+(R+16)*Math.cos(ae),cy+(R+16)*Math.sin(ae),C.photon,4);
+  const x=cx+ro*Math.cos(as),y=cy+ro*Math.sin(as);dot(c,x,y,5,'#fff');c.fillStyle=C.b;c.fillRect(x-12,y-2,7,4);c.fillRect(x+5,y-2,7,4);
+  T(c,'깃발',cx,cy+4,12,'#fff','center');T(c,'크기와 거리는 실제 비율과 다르다',w-10,18,11,C.dim,'right');}}
+};
+const HID_CONCEPT={straight:'바늘구멍 사진기: 상의 크기는 스크린 거리에 비례',reflect:'잠망경: 45° 거울 두 장으로 빛을 두 번 꺾는다',refract:'전반사: 임계각보다 큰 입사각에서 빛이 모두 반사',lens:'근시는 오목 렌즈, 원시는 볼록 렌즈로 교정',color:'물체의 색: 반사하는 빛의 색으로 정해진다',parallax:'1 pc ≈ 3.26광년',bright:'광도: 별이 실제로 내는 빛의 양',magnitude:'등급 차 5 = 밝기 100배 = 거리 10배',temp:'색과 광도로 주계열성·거성을 구분',galaxy:'우리은하는 막대 나선 은하',expand:'허블 법칙: 후퇴 속도는 거리에 비례',explore:'정지 궤도: 높이 약 36000 km, 주기 24시간'};
+
+/* ---------- 히든 스테이지 3개 ---------- */
+WORLDS.push({title:'히든 구역 · 미지의 영역',unit:'조건을 달성한 대원에게만 공개 · 점수 1.5배'});
+STAGES.push(
+ {id:'hmirror',world:2,hidden:true,need:[0],lvl:9,segs:[9,4],sky:false,name:'거울 미궁',place:'봉인된 광학실',sim:'hmirror',concept:['직각으로 놓인 두 거울에서 두 번 반사한 빛은 들어온 방향과 나란하게 되돌아간다.','유리 블록을 통과한 빛은 두 번 굴절해, 처음 방향과 나란하게 나온다.','볼록 렌즈: 물체가 초점 거리의 1.5배 위치에 있으면 2배 크기의 거꾸로 선 상이 생긴다.']},
+ {id:'hscale',world:2,hidden:true,need:[1],lvl:10,segs:[10,4],sky:true,name:'별의 저울',place:'심우주 관측대',sim:'hscale',concept:['연주 시차로 거리를 구하고, 거리와 겉보기 등급으로 절대 등급을 구한다.','색으로 표면 온도를, 겉보기 등급과 절대 등급의 차로 거리를 판단한다.','팽창을 거꾸로 되돌리면 모든 은하가 한 점에 모인다. 그때까지의 시간이 우주의 나이다.']},
+ {id:'hfinal',world:2,hidden:true,need:[0,1],lvl:11,segs:[11,5],sky:true,name:'최종 관측',place:'은하 끝 전망대',sim:'hfinal',concept:['굴절 망원경: 두 볼록 렌즈의 간격 = 두 초점 거리의 합, 배율 = 대물렌즈 초점 거리 ÷ 접안렌즈 초점 거리','별빛을 삼원색으로 나누면 파란빛의 비율이 클수록 표면 온도가 높다.','거리(pc) = 1 ÷ 연주 시차, 1 pc ≈ 3.26광년. 빛의 속력의 10%로 가면 광년 수의 10배만큼 해가 걸린다.']});
+
+const cornerY=i=>19*Math.tan(rad(i))-5,CORNER_T=cornerY(35);
+const slabR=i=>Math.asin(Math.sin(rad(i))/1.5),slabX=i=>8*Math.tan(rad(i))+4*Math.tan(slabR(i)),SLAB_T=slabX(40);
+const scopeOut=s=>s.L===50+s.f2?'나란하다 (선명)':s.L<50+s.f2?'퍼진다 (흐림)':'모인다 (흐림)';
+function lensShape(c,x,cy,H){c.fillStyle='rgba(90,147,255,.3)';c.strokeStyle=C.b;c.lineWidth=2;c.beginPath();c.ellipse(x,cy,9,H,0,0,TAU);c.fill();c.stroke()}
+
+SIMS.hmirror={
+ init:()=>({view:'corner',i:25,u:40}),
+ steps:[
+  {enter:s=>{s.view='corner';s.i=25},controls:[{type:'range',key:'i',label:'레이저를 아래로 기울인 각',min:20,max:50,step:1,unit:'°'}],
+   read:s=>'기울인 각 '+s.i+'° · 두 거울에서 반사',
+   text:'거울 두 장이 직각으로 맞닿아 있다. 레이저의 각도를 조절해, 두 번 반사된 빛으로 왼쪽 벽의 감지기를 맞히자.',
+   ok:s=>Math.abs(cornerY(s.i)-CORNER_T)<.3,fail:s=>cornerY(s.i)<CORNER_T?'되돌아온 빛이 감지기 아래쪽에 닿았다.':'되돌아온 빛이 감지기 위쪽으로 지나갔다.',
+   hint:'두 번 반사되어 돌아오는 빛은 처음 쏜 빛과 나란하다. 각을 키우면 돌아오는 빛이 벽의 더 높은 곳에 닿는다.',
+   explain:'직각으로 놓인 두 거울에서 두 번 반사한 빛은 들어온 방향과 나란하게 되돌아간다. 자전거 반사판과 달에 설치한 레이저 반사경이 이 원리를 쓴다.'},
+  {enter:s=>{s.view='slab';s.i=15},controls:[{type:'range',key:'i',label:'입사각',min:10,max:60,step:1,unit:'°'}],
+   read:s=>'입사각 '+s.i+'° → 유리 속 '+(slabR(s.i)*180/Math.PI).toFixed(0)+'° → 나온 뒤 '+s.i+'°',
+   text:'두꺼운 유리 블록 아래 바닥에 표적이 있다. 입사각을 조절해 유리를 통과한 빛으로 표적을 맞히자. 점선은 빛이 꺾이지 않았을 때의 길이다.',
+   ok:s=>Math.abs(slabX(s.i)-SLAB_T)<.1,fail:s=>slabX(s.i)<SLAB_T?'빛이 표적에 못 미쳤다. 입사각을 키워 보자.':'빛이 표적을 지나쳤다. 입사각을 줄여 보자.',
+   hint:'유리를 지나면 빛은 점선보다 광원 쪽으로 밀려난 곳에 닿는다. 표적을 똑바로 겨눌 때보다 더 비스듬히 쏘아야 한다.',
+   explain:'빛은 유리로 들어갈 때 법선 쪽으로, 나올 때는 그 반대로 꺾인다. 그래서 나온 빛은 처음 방향과 나란하지만 위치는 옆으로 밀려난다.'},
+  {enter:s=>{s.view='lens';s.u=40},controls:[{type:'range',key:'u',label:'물체까지의 거리 (초점 거리 15 cm)',min:16,max:60,step:.5,unit:' cm',fmt:v=>v.toFixed(1)}],
+   read:s=>'거꾸로 선 상 · 물체의 '+(15/(s.u-15)).toFixed(2)+'배',
+   text:'초점 거리 15 cm인 볼록 렌즈로, 크기가 물체의 정확히 2배인 거꾸로 선 상을 만들자.',
+   ok:s=>Math.abs(15/(s.u-15)-2)<.05,fail:s=>15/(s.u-15)>2?'상이 2배보다 크다. 물체를 렌즈에서 조금 멀리 옮기자.':'상이 2배보다 작다. 물체를 초점 쪽으로 옮기자.',
+   hint:'확대된 거꾸로 선 상은 물체가 초점 거리(15 cm)와 그 2배(30 cm) 사이에 있을 때 생긴다. 정확히 2배가 되는 곳은 그 한가운데다.',
+   explain:'물체가 초점 거리의 1.5배인 22.5 cm에 있으면 상은 렌즈 뒤 45 cm에 2배 크기로 생긴다. 영사기가 작은 화면을 크게 비추는 원리다.'}],
+ draw(c,w,h,s){
+  if(s.view==='lens'){SIMS.lens.draw(c,w,h,{el:'cvxL',u:s.u});return}
+  if(s.view==='corner'){const k=Math.min(w*.62/10,h*.8/12.5),x0=(w-10*k)/2,y0=h*.92,X=x=>x0+x*k,Y=y=>y0-y*k,a=rad(s.i),hit=Math.abs(cornerY(s.i)-CORNER_T)<.3;
+   Ln(c,X(0),Y(0),X(0),Y(12.5),C.line,3);Ln(c,X(0),Y(0),X(10),Y(0),'#cfd6ff',5);Ln(c,X(10),Y(0),X(10),Y(12.5),'#cfd6ff',5);
+   for(let v=.5;v<10;v+=1)Ln(c,X(v),Y(0)+4,X(v)-6,Y(0)+12,C.line,1.5);for(let v=.5;v<12.5;v+=1)Ln(c,X(10)+4,Y(v),X(10)+12,Y(v)+6,C.line,1.5);
+   let x=1,y=5,dx=Math.cos(a),dy=-Math.sin(a);
+   for(let n=0;n<4;n++){const tb=dy<0?-y/dy:1e9,tr=dx>0?(10-x)/dx:1e9,tl=dx<0?-x/dx:1e9,tt=dy>0?(12.5-y)/dy:1e9,t=Math.min(tb,tr,tl,tt),nx=x+dx*t,ny=y+dy*t;Ln(c,X(x),Y(y),X(nx),Y(ny),C.r,3);x=nx;y=ny;if(t===tb)dy=-dy;else if(t===tr)dx=-dx;else break}
+   if(hit)glow(c,X(0),Y(CORNER_T),34,'63,224,138',.8);dot(c,X(0),Y(CORNER_T),12,hit?C.g:C.hull2);c.strokeStyle=hit?C.g:C.ink;c.lineWidth=3;c.beginPath();c.arc(X(0),Y(CORNER_T),12,0,TAU);c.stroke();
+   T(c,'감지기',X(0)-18,Y(CORNER_T)+4,12,C.ink,'right');c.fillStyle=C.hull2;rr(c,X(1)-16,Y(5)-10,32,20,5);c.fill();T(c,'레이저',X(1),Y(5)-16,12,C.dim,'center');
+   T(c,'거울',X(5),Y(0)+30,13,C.dim,'center');T(c,'거울',X(10)+18,Y(6),13,C.dim,'left');return}
+  const k=Math.min(w*.86/17,h*.84/12),x0=w*.07,y0=h*.05,X=x=>x0+x*k,Y=y=>y0+y*k,ti=Math.tan(rad(s.i)),tr=Math.tan(slabR(s.i)),hit=Math.abs(slabX(s.i)-SLAB_T)<.1;
+  c.fillStyle='rgba(190,212,255,.2)';c.fillRect(0,Y(4),w,4*k);Ln(c,0,Y(4),w,Y(4),'#9fc0ff',2);Ln(c,0,Y(8),w,Y(8),'#9fc0ff',2);Ln(c,0,Y(12),w,Y(12),C.dim,3);
+  T(c,'공기',w-12,Y(2),13,C.dim,'right');T(c,'유리',w-12,Y(6),13,'#9fc0ff','right');T(c,'공기',w-12,Y(10),13,C.dim,'right');
+  Ln(c,X(4*ti),Y(4),X(12*ti),Y(12),C.dim,1.5,[3,7]);
+  Ln(c,X(0),Y(0),X(4*ti),Y(4),C.r,3);Ln(c,X(4*ti),Y(4),X(4*ti+4*tr),Y(8),C.r,3);Ln(c,X(4*ti+4*tr),Y(8),X(slabX(s.i)),Y(12),C.r,3);
+  if(hit)glow(c,X(SLAB_T),Y(12),36,'63,224,138',.8);c.fillStyle=hit?C.g:C.photon;c.beginPath();c.moveTo(X(SLAB_T),Y(12)-16);c.lineTo(X(SLAB_T)+11,Y(12)-5);c.lineTo(X(SLAB_T),Y(12)+5);c.lineTo(X(SLAB_T)-11,Y(12)-5);c.fill();
+  c.fillStyle=C.hull2;rr(c,X(0)-16,Y(0)-8,32,20,5);c.fill();dot(c,X(slabX(s.i)),Y(12),5,C.r);}
+};
+
+const HS_T=[['별 A','0.1″','1'],['별 B','0.01″','3'],['별 C','1″','-1']];
+const HS_C=[['가','적색',3200,'0.5','-5.0'],['나','백색',9000,'-1.5','1.4'],['다','청백색',15000,'2.0','-4.0'],['라','황백색',6800,'2.6','3.4']];
+SIMS.hscale={
+ init:()=>({view:'table',t:0}),
+ steps:[
+  {enter:s=>{s.view='table'},read:()=>'거리(pc) = 1 ÷ 연주 시차(″)',
+   text:'세 별의 관측 자료다. 실제로 가장 밝은 별과 그 절대 등급을 구하자.',options:['별 A, 절대 등급 1','별 B, 절대 등급 -2','별 C, 절대 등급 -1','별 B, 절대 등급 8'],answer:1,
+   hint:'먼저 거리를 구한다. 10 pc보다 10배 먼 별은 실제보다 5등급 어둡게, 1/10 거리의 별은 5등급 밝게 보인다.',
+   explain:'A는 10 pc에 있어 절대 등급이 겉보기와 같은 1이다. B는 100 pc에 있어 실제로는 5등급 더 밝은 -2, C는 1 pc에 있어 실제로는 5등급 어두운 4다. 가장 어둡게 보이는 B가 실제로는 가장 밝다.'},
+  {enter:s=>{s.view='cards'},read:()=>'태양: 황색 별',
+   text:'별 네 개의 색과 등급이다. 태양보다 표면 온도가 높으면서 10 pc보다 멀리 있는 별을 찾자.',options:['별 가','별 나','별 다','별 라'],answer:2,
+   hint:'태양(황색)보다 뜨거운 색은 황백색, 백색, 청백색, 청색이다. 10 pc보다 먼 별은 겉보기 등급이 절대 등급보다 크다.',
+   explain:'온도 조건은 나·다·라가 만족한다. 그중 겉보기 등급이 절대 등급보다 큰 별은 다(2.0 > -4.0)뿐이다. 가는 멀지만 차가운 적색 별이고, 나와 라는 10 pc보다 가깝다.'},
+  {enter:s=>{s.view='rewind';s.t=0},controls:[{type:'range',key:'t',label:'시간 되감기',min:0,max:70,step:10,unit:'억 년'}],
+   read:s=>'되감은 시간 '+s.t+'억 년 · 은하 A까지 '+(100*(1-s.t/140)).toFixed(0)+' Mpc',
+   text:'은하들이 지금의 속력 그대로 멀어져 왔다고 하자. 시간을 되감으며 은하 A의 거리를 살펴보고, 모든 은하가 한 점에 모이는 때를 구하자.',options:['약 70억 년 전','약 105억 년 전','약 140억 년 전','약 280억 년 전'],answer:2,
+   hint:'70억 년을 되감으면 거리가 얼마나 줄어드는지 본다. 남은 거리도 같은 빠르기로 줄어든다.',
+   explain:'70억 년 동안 거리가 절반이 되므로, 0이 되려면 140억 년이 걸린다. 먼 은하는 그만큼 빠르기 때문에 모든 은하가 같은 때에 한 점에 모인다. 이렇게 구한 값은 실제 우주의 나이 약 138억 년과 비슷하다.'}],
+ draw(c,w,h,s){
+  if(s.view==='table'){const xs=[.2,.5,.8],y0=h*.22,dy=h*.15;['별','연주 시차','겉보기 등급'].forEach((t,i)=>T(c,t,w*xs[i],y0,15,C.photon,'center',1));Ln(c,w*.08,y0+14,w*.92,y0+14,C.line,2);
+   HS_T.forEach((r,j)=>{r.forEach((t,i)=>T(c,t,w*xs[i],y0+dy*(j+1),20,C.ink,'center',1));Ln(c,w*.08,y0+dy*(j+1)+16,w*.92,y0+dy*(j+1)+16,'rgba(52,62,134,.5)',1)});return}
+  if(s.view==='cards'){starfield(c,w,h);const cw=w*.21,ch=h*.56,y=h*.16;HS_C.forEach((r,i)=>{const x=w*.035+i*(cw+w*.03);c.fillStyle=C.hull;rr(c,x,y,cw,ch,12);c.fill();c.strokeStyle=C.line;c.lineWidth=1.5;c.stroke();
+    const col=tcol(r[2]).join(',');glow(c,x+cw/2,y+ch*.26,ch*.2,col,.8);dot(c,x+cw/2,y+ch*.26,ch*.08,'rgb('+col+')');
+    T(c,'별 '+r[0],x+cw/2,y+ch*.52,18,C.photon,'center',1);T(c,r[1],x+cw/2,y+ch*.65,14,C.ink,'center');T(c,'겉보기 '+r[3],x+cw/2,y+ch*.78,13,C.dim,'center');T(c,'절대 '+r[4],x+cw/2,y+ch*.9,13,C.dim,'center')});return}
+  starfield(c,w,h);const f=1-s.t/140,k=Math.min(w,h)*.44,cx=w/2,cy=h*.47;
+  GAL.forEach((g,i)=>{const x=cx+g[0]*k*f,y=cy+g[1]*k*f,x1=cx+g[0]*k,y1=cy+g[1]*k;if(i&&s.t>0)arrow(c,x1,y1,x,y,'rgba(255,212,71,.5)',1.5);
+   c.save();c.translate(x,y);c.rotate(i*1.3);glow(c,0,0,16,i?'190,212,255':'255,212,71',.7);c.fillStyle=i?'#dfe6ff':C.photon;c.beginPath();c.ellipse(0,0,12,5,0,0,TAU);c.fill();c.restore();
+   if(i===5)T(c,'은하 A',x+16,y+18,13,C.ink,'left',1);if(!i)T(c,'우리은하',x,y+32,12,C.photon,'center')});}
+};
+
+const HF_S=[['X',100,60,30],['Y',70,85,100],['Z',100,95,80]];
+SIMS.hfinal={
+ init:()=>({view:'scope',f2:20,L:50,r:50,g:50,b:50}),
+ steps:[
+  {enter:s=>{s.view='scope';s.f2=20;s.L=50},controls:[{type:'select',key:'f2',label:'접안렌즈의 초점 거리',options:[{v:5,label:'5 cm'},{v:10,label:'10 cm'},{v:20,label:'20 cm'}]},{type:'range',key:'L',label:'두 렌즈 사이의 간격',min:40,max:80,step:1,unit:' cm'}],
+   read:s=>'배율 '+(50/s.f2)+'배 · 나온 빛이 '+scopeOut(s),
+   text:'초점 거리 50 cm인 대물렌즈에 접안렌즈를 골라 끼우고 간격을 맞춰, 배율 5배의 선명한 망원경을 만들자. 접안렌즈를 지난 별빛이 나란해야 선명하게 보인다.',
+   ok:s=>s.f2===10&&s.L===60,fail:s=>s.f2!==10?'배율이 5배가 아니다. 배율 = 대물렌즈의 초점 거리 ÷ 접안렌즈의 초점 거리.':'배율은 맞지만, 나온 빛이 나란하지 않아 상이 흐리다.',
+   hint:'두 렌즈의 초점이 한 점에서 만나야 한다. 간격 = 두 초점 거리의 합.',
+   explain:'대물렌즈가 모은 별빛을 접안렌즈가 다시 나란하게 펴 준다. 간격은 50 + 10 = 60 cm, 배율은 50 ÷ 10 = 5배다. 대물렌즈가 클수록 빛을 많이 모아 어두운 천체까지 볼 수 있다.'},
+  {enter:s=>{s.view='spec';s.r=s.g=s.b=50},controls:[{type:'range',key:'r',label:'빨간빛 세기',min:0,max:100,step:10,unit:'%'},{type:'range',key:'g',label:'초록빛 세기',min:0,max:100,step:10,unit:'%'},{type:'range',key:'b',label:'파란빛 세기',min:0,max:100,step:10,unit:'%'}],
+   read:s=>'내가 만든 빛: 빨강 '+s.r+' · 초록 '+s.g+' · 파랑 '+s.b,
+   text:'세 별의 빛을 삼원색으로 나눠 잰 세기다. 같은 세기로 빛을 합성해 각 별의 색을 직접 만들어 보고, 표면 온도가 높은 별부터 나열하자.',options:['Y > Z > X','X > Z > Y','Z > Y > X','Y > X > Z'],answer:0,
+   hint:'파란빛의 비율이 클수록 표면 온도가 높고, 빨간빛만 강할수록 낮다.',
+   explain:'Y는 파란빛이 가장 강한 청백색 별, Z는 세 빛이 고르게 강한 황백색 별, X는 빨간빛이 두드러진 주황색 별이다. 표면 온도는 Y > Z > X 순이다.'},
+  {enter:s=>{s.view='trip'},read:()=>'1 pc ≈ 3.26광년 · 탐사선의 속력 = 빛의 속력의 10%',
+   text:'연주 시차가 0.25″인 별에 탐사선을 보낸다. 빛의 속력의 10%로 날아가면 도착하는 데 얼마나 걸릴까?',options:['약 13년','약 40년','약 130년','약 400년'],answer:2,
+   hint:'거리(pc) = 1 ÷ 연주 시차. 광년으로 바꾼 뒤, 빛보다 10배 느리다는 점을 생각한다.',
+   explain:'거리는 1 ÷ 0.25 = 4 pc, 약 13광년이다. 빛으로 13년 걸리는 거리를 10분의 1 속력으로 가면 약 130년이 걸린다. 가까운 별조차 이렇게 멀어서, 지금의 별 탐사는 망원경 관측에 의존한다.'}],
+ draw(c,w,h,s,t){
+  if(s.view==='scope'){const cy=h*.47,kx=w*.84/105,x0=w*.1,xo=x0,xe=x0+s.L*kx,H=h*.3;Ln(c,0,cy,w,cy,C.line,1.5);
+   [-1,-.5,.5,1].forEach(q=>{const y1=H*.8*q,ye=y1*(1-s.L/50),sl=-y1/(50*kx)-ye/(s.f2*kx),x2=xe+25*kx;Ln(c,0,cy+y1,xo,cy+y1,C.photon,2);Ln(c,xo,cy+y1,xe,cy+ye,C.photon,2);Ln(c,xe,cy+ye,x2,cy+ye+sl*25*kx,C.photon,2)});
+   lensShape(c,xo,cy,H);lensShape(c,xe,cy,H*.55);dot(c,xo+50*kx,cy,4,C.r);T(c,'대물렌즈의 초점',xo+50*kx,cy+H+20,12,C.r,'center');
+   T(c,'대물렌즈 (50 cm)',xo,cy-H-10,12,C.dim,'center');T(c,'접안렌즈 ('+s.f2+' cm)',xe,cy-H*.55-10,12,C.dim,'center');T(c,'별빛',10,cy-H*.8-10,12,C.photon,'left');return}
+  if(s.view==='spec'){const bw=w*.035,bh=h*.42,y0=h*.66;HF_S.forEach((r,i)=>{const x=w*.08+i*w*.2;[C.r,C.g,C.b].forEach((col,j)=>{const v=r[j+1]/100*bh;c.fillStyle=col;c.fillRect(x+j*(bw+4),y0-v,bw,v);T(c,r[j+1]+'',x+j*(bw+4)+bw/2,y0-v-6,11,C.dim,'center')});T(c,'별 '+r[0],x+(bw*3+8)/2,y0+26,17,C.photon,'center',1)});
+   Ln(c,w*.05,y0,w*.66,y0,C.line,2);const cx=w*.84,cy=h*.42,R=Math.min(w*.11,h*.22),col=[s.r,s.g,s.b].map(v=>Math.round(v*2.55)).join(',');dot(c,cx,cy,R*1.5,'#000');glow(c,cx,cy,R*1.5,col,.6);dot(c,cx,cy,R,'rgb('+col+')');T(c,'내가 만든 빛',cx,cy+R*1.5+22,13,C.dim,'center');return}
+  starfield(c,w,h);const y=h*.45,x1=w*.14,x2=w*.86,xs=x2-(x2-x1)*(.25+.5*((t*.05)%1));glow(c,x1,y,30,'255,244,200',.9);dot(c,x1,y,6,'#fff');dot(c,x2,y,14,'#2f6fe0');
+  Ln(c,x1+24,y,x2-22,y,C.line,1.5,[4,8]);c.fillStyle=C.ink;c.beginPath();c.moveTo(xs-14,y);c.lineTo(xs+8,y-7);c.lineTo(xs+8,y+7);c.fill();c.fillStyle=C.photon;c.fillRect(xs+8,y-3,8,6);
+  T(c,'목표 별 · 연주 시차 0.25″',x1,y+52,13,C.ink,'left');T(c,'지구',x2,y+40,13,C.ink,'center');T(c,'도착까지 걸리는 시간 = ?',w/2,y-30,16,C.photon,'center',1);}
+};
+
+/* 히든 스테이지의 숨겨진 공간 */
+function specBar(c,x,y,w,hh,lines,shift){const g=c.createLinearGradient(x,0,x+w,0);['#7a3cff','#3f6bff','#2fd0ff','#3fe08a','#ffe14a','#ff9a3a','#ff4a4a'].forEach((col,i)=>g.addColorStop(i/6,col));c.fillStyle=g;c.fillRect(x,y,w,hh);lines.forEach(p=>{c.fillStyle='#000';c.fillRect(x+(p+shift)*w-2,y,4,hh)})}
+HID.hmirror={title:'프리즘과 빛의 분산',intro:'유리 속에서는 빛의 색에 따라 꺾이는 정도가 다르다. 파장이 짧은 빛일수록 더 많이 꺾이고, 빛의 파장은 빨강에서 보라로 갈수록 짧아진다.',
+ init:()=>({}),read:()=>'흰빛 → 프리즘 → ①②③',
+ steps:[{text:'흰빛이 프리즘을 지나 여러 색으로 갈라졌다. 가장 많이 꺾인 ③의 자리에 오는 빛은?',options:['빨간빛','초록빛','보랏빛'],answer:2,
+  explain:'보랏빛은 파장이 가장 짧아 가장 많이 꺾이고, 빨간빛은 가장 적게 꺾인다. 무지개도 물방울 속에서 햇빛이 색에 따라 다르게 굴절해 생긴다.'}],
+ draw(c,w,h){const cx=w*.42,cy=h*.5,R=Math.min(w,h)*.26;c.fillStyle='rgba(190,212,255,.18)';c.strokeStyle='#9fc0ff';c.lineWidth=2;c.beginPath();c.moveTo(cx,cy-R);c.lineTo(cx+R*.95,cy+R*.7);c.lineTo(cx-R*.95,cy+R*.7);c.closePath();c.fill();c.stroke();
+  const ex=cx-R*.42,ey=cy,ox=cx+R*.42,oy=cy;Ln(c,w*.04,cy+R*.35,ex,ey,'#fff',3);Ln(c,ex,ey,ox,oy,'rgba(255,255,255,.7)',3);
+  [[.12,'①'],[.3,'②'],[.5,'③']].forEach(a=>{const x2=w*.94,y2=oy+(x2-ox)*a[0];Ln(c,ox,oy,x2,y2,'rgba(238,241,255,.75)',2.5);T(c,a[1],x2-8,y2-8,18,C.photon,'right',1)});T(c,'흰빛',w*.05,cy+R*.35-10,13,C.dim,'left');}};
+HID.hscale={title:'별의 크기',intro:'별의 광도는 표면적에 비례하고, 표면 온도가 높을수록 커진다. 별의 표면적은 반지름의 제곱에 비례한다.',
+ init:()=>({}),read:()=>'표면 온도가 같은 두 별',
+ steps:[{text:'별 P와 Q는 표면 온도가 같다. Q의 광도가 P의 100배라면, Q의 반지름은 P의 몇 배일까?',options:['10배','50배','100배','10000배'],answer:0,
+  explain:'온도가 같으면 광도는 표면적에 비례한다. 표면적이 100배가 되려면 반지름은 10배여야 한다(10 × 10 = 100). 거성이 밝은 까닭은 이렇게 크기 때문이다.'}],
+ draw(c,w,h){starfield(c,w,h);const y=h*.45,r=Math.min(w,h)*.05;glow(c,w*.25,y,r*2.2,'255,165,74',.8);dot(c,w*.25,y,r,'#ffa54a');T(c,'별 P · 광도 1',w*.25,y+r*2.2+26,14,C.ink,'center',1);
+  c.strokeStyle='#ffa54a';c.lineWidth=2.5;c.setLineDash([6,7]);c.beginPath();c.arc(w*.68,y,r*3.4,0,TAU);c.stroke();c.setLineDash([]);T(c,'?',w*.68,y+12,40,'#ffa54a','center',1);T(c,'별 Q · 광도 100',w*.68,y+r*3.4+26,14,C.ink,'center',1);}};
+HID.hfinal={title:'적색 편이',intro:'멀어지는 광원에서 온 빛은 파장이 길어져, 스펙트럼의 검은 선이 붉은 쪽으로 밀린다. 빠르게 멀어질수록 더 많이 밀린다.',
+ init:()=>({}),read:()=>'왼쪽 보라 ← 스펙트럼 → 오른쪽 빨강',
+ steps:[{text:'실험실에서 잰 스펙트럼과 두 은하의 스펙트럼이다. 우리에게서 더 멀리 있는 은하는?',options:['은하 A','은하 B','이 자료로는 알 수 없다'],answer:1,
+  explain:'선이 더 많이 밀린 은하 B가 더 빠르게 멀어진다. 우주가 팽창할 때 멀리 있는 은하일수록 빠르게 멀어지므로, B가 더 멀리 있다. 허블은 이 방법으로 우주의 팽창을 알아냈다.'}],
+ draw(c,w,h){const x=w*.26,bw=w*.66,bh=h*.13;[['실험실 (기준)',0],['은하 A',.04],['은하 B',.13]].forEach((r,i)=>{const y=h*.14+i*h*.24;specBar(c,x,y,bw,bh,[.3,.52],r[1]);T(c,r[0],x-12,y+bh/2+5,14,C.ink,'right',1)});
+  Ln(c,x+.3*bw,h*.1,x+.3*bw,h*.78,'rgba(238,241,255,.4)',1,[3,5]);Ln(c,x+.52*bw,h*.1,x+.52*bw,h*.78,'rgba(238,241,255,.4)',1,[3,5]);}};
+Object.assign(HID_CONCEPT,{hmirror:'분산: 파장이 짧은 빛일수록 더 많이 굴절',hscale:'온도가 같으면 광도는 반지름의 제곱에 비례',hfinal:'적색 편이: 빠르게 멀어질수록 스펙트럼이 붉은 쪽으로 이동'});
+
+/* ---------- 화면 전환·지도·랭킹·등급 ---------- */
+let state='login',run=null,sim=null,clock=0,tab='stages',logs=[],pwForced=true;
+const keys={left:false,right:false,jumpQ:0,act:false};
+const SCREENS=['login','pw','map','sim','result'];
+function show(name){state=name;SCREENS.forEach(s=>{$('#'+s).hidden=s!==name});const p=name==='play';$('#hud').hidden=$('#padL').hidden=$('#padR').hidden=!p;$('#modal').hidden=true;keys.left=keys.right=false;if(p)resize()}
+let toastT=0;function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{t.hidden=true},2600)}
+const starStr=n=>'★'.repeat(n)+'<em>'+'★'.repeat(3-n)+'</em>';
+const hidOpen=d=>!!me.openHidden||d.need.every(w=>worldDone(w));
+const unlocked=i=>{const d=STAGES[i];if(d.hidden)return hidOpen(d);return !!me.openAll||i===0||d.world!==STAGES[i-1].world||cleared(STAGES[i-1].id)};
+const stageNo=i=>{const d=STAGES[i];return d.hidden?'H-'+(i-11):(d.world+1)+'-'+(STAGES.slice(0,i+1).filter(x=>x.world===d.world).length)};
+
+function rk(n,label,val,isMe){return `<div class="rk${n<=3?' top':''}${isMe?' me':''}"><b>${n}</b><span>${esc(label)}</span><span>${val}</span></div>`}
+function rankHtml(full){
+ const d=rankData,mid=me&&me.id,none='<p class="dim">아직 기록이 없다.</p>';
+ let h=`<div class="rankhead"><h3>랭킹</h3><span>${d?'갱신 시각 '+esc(d.updated):''} <button class="btn ghost small" type="button" data-act="rank">새로 고침</button></span></div>`;
+ if(!d)return h+'<p class="dim">랭킹을 불러오는 중이다.</p>';
+ let a=d.top.map(r=>rk(r.rank,r.id,r.total,r.id===mid)).join('');
+ if(mid&&d.me&&d.me.rank>10)a+='<div class="rk gap">···</div>'+rk(d.me.rank,mid,d.me.total,true);
+ const b=d.classes.map((c,i)=>rk(i+1,c.label,c.avg,!!mid&&d.classKey===c.key)).join('');
+ h+='<div class="rankcols"><div><h4>전체 상위 10명</h4>'+(a||none)+'</div><div><h4>학급 대항 (평균 점수)</h4>'+(b||none)+'</div>';
+ if(full&&mid&&d.myClass)h+='<div><h4>우리 반 ('+clsLabel(mid)+')</h4>'+(d.myClass.map(r=>rk(r.rank,r.id,r.total,r.id===mid)).join('')||none)+'</div>';
+ h+='</div>';
+ if(full&&mid){const m={};(d.ta||[]).forEach(x=>{m[x.s]=x});
+  h+='<h4 class="tahead">스테이지별 타임어택 1위</h4><div class="tagrid">'+STAGES.map((sd,i)=>{if(sd.hidden&&!unlocked(i))return'';const x=m[sd.id];
+   return `<div class="rk ta${x&&x.id===mid?' me':''}"><b>${stageNo(i)}</b><span>${sd.name}</span><span>${x?esc(x.id)+' · '+Number(x.t).toFixed(1)+'초':'기록 없음'}</span></div>`}).join('')+'</div>'
+   +'<p class="dim" style="margin-top:6px">타임어택에는 첫 도전에서 정확도 400점과 숨겨진 공간 보너스 150점을 모두 받은 기록만 오른다.</p>'}
+ return h+'<p class="dim" style="margin-top:6px">랭킹은 최대 1분 간격으로 갱신된다. 동점이면 총 소요 시간이 짧은 쪽이 위다.</p>'}
+function paintMyRank(){const d=rankData;$('#mapMyRank').textContent=d&&d.me&&me?'내 순위: 전체 '+d.me.rank+'위 · 우리 반 '+d.me.classRank+'위':''}
+function paintRank(){$('#rankLogin').innerHTML=rankHtml(false);if(state==='map'){paintMyRank();if(tab==='rank')$('#mapBody').innerHTML='<div class="rankcard">'+rankHtml(true)+'</div>'}}
+function loadRank(){return call('rank',{}).then(d=>{rankData=d;paintRank()}).catch(()=>{})}
+
+function gradeHtml(){
+ const x=total(),cur=rank(x),G='<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">';
+ let h='<div class="world"><h3>대원 등급<small>총점으로 정해진다</small></h3>'+G;
+ RANKS.forEach((r,i)=>{h+=`<div class="badge${i<=cur?' on':''}"><div class="medal">${i+1}</div><div><strong>${r[1]}${i===cur?' · 현재 등급':''}</strong><span>총점 ${r[0]}점 이상</span></div></div>`});
+ h+='</div></div><div class="world"><h3>히든 등급<small>특별한 조건을 달성한 대원만 얻는다</small></h3>'+G;
+ TITLES.forEach(t=>{const on=me.badges.includes(t.id);h+=`<div class="badge${on?' on':''}"><div class="medal">${on?'★':'?'}</div><div><strong>${on?t.name:'???'}</strong><span>${on?t.desc:'달성 조건은 비공개'}</span></div></div>`});
+ h+=`</div></div><div class="card"><h4>점수 규칙</h4><ul>
+ <li>한 판의 점수 = (정확도 + 시간 보너스 + 숨겨진 공간 보너스) × 도전 계수. 가장 높은 한 판이 기록된다.</li>
+ <li>정확도(최대 400): 미션 1개 100점(오답 -40, 힌트 -15), 광자 1개 10점, 충돌과 구덩이 추락 1회마다 -10점</li>
+ <li>시간 보너스(최대 200): 빨리 클리어할수록 크고, 2분을 넘기면 0점</li>
+ <li>숨겨진 공간 보너스(최대 150): 다시 들어갈수록 줄고, 충돌과 추락 1회마다 -10점</li>
+ <li>도전 계수: 첫 도전 100%, 두 번째 90%, 세 번째부터 80%. 스테이지에 들어와 5초가 지나거나 실험 장치를 열면 도전 1회로 센다.</li>
+ <li>★3은 500점 이상, ★2는 350점 이상</li>${STAGES.some((d,i)=>d.hidden&&unlocked(i))?'<li>히든 스테이지: 점수 1.5배(★3은 750점, ★2는 525점), 시간 보너스는 3분을 넘기면 0점</li>':''}</ul></div>`;
+ return h}
+function renderMap(){
+ const x=total(),rkI=rank(x),nx=RANKS[rkI+1],shown=STAGES.filter((d,i)=>!d.hidden||unlocked(i)).length;
+ $('#mapRank').textContent='대원 등급 '+(rkI+1)+' · '+RANKS[rkI][1]+myTitles().map(t=>' · '+t.name).join('');$('#mapName').textContent=me.id+' · '+clsLabel(me.id);
+ $('#mapXp').style.width=(nx?(x-RANKS[rkI][0])/(nx[0]-RANKS[rkI][0])*100:100)+'%';
+ $('#mapNext').textContent=nx?'다음 등급 '+nx[1]+'까지 '+(nx[0]-x)+'점':'최고 등급 달성';
+ $('#sXp').textContent=x;$('#sStar').textContent=totStars()+'/'+shown*3;$('#sHid').textContent=totHid()+'/'+shown;$('#sBg').textContent=me.badges.filter(b=>b[0]!=='x').length+'/'+BADGES.length;
+ paintMyRank();paintSync();
+ document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===tab));
+ let h='';
+ if(tab==='stages')WORLDS.forEach((w,wi)=>{const list=STAGES.map((d,i)=>[d,i]).filter(a=>a[0].world===wi&&(!a[0].hidden||unlocked(a[1])));if(!list.length)return;
+  h+=`<div class="world"><h3>${w.title}<small>${w.unit}</small></h3><div class="grid">`;
+  list.forEach(a=>{const d=a[0],i=a[1],u=unlocked(i),r=rec(d.id);
+   h+=`<button type="button" class="stage${u?'':' locked'}" data-i="${i}" ${u?'':'disabled'}><span class="no">STAGE ${stageNo(i)}</span><span class="nm">${d.name}</span><span class="pl">${d.place}</span>`
+    +(u?`<span class="sc">${r.clr?'최고 '+r.s+'점':(r.a?'도전 중':'미도전')}${r.clr&&r.hb?' <i>숨은 공간 +'+r.hb+'</i>':''}${r.a?' · 도전 '+r.a+'회':''}${r.ta?' · 타임어택 '+Number(r.ta).toFixed(1)+'초':''}</span><span class="st">${starStr(r.clr?r.star:0)}</span>`:'<span class="st">앞 스테이지를 먼저 클리어</span>')+'</button>'});
+  h+='</div></div>'});
+ else if(tab==='rank')h='<div class="rankcard">'+rankHtml(true)+'</div>';
+ else if(tab==='grade')h=gradeHtml();
+ else if(tab==='badges'){h='<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">';BADGES.forEach(b=>{const on=me.badges.includes(b.id);h+=`<div class="badge${on?' on':''}"><div class="medal">${b.name[0]}</div><div><strong>${b.name}</strong><span>${b.desc}</span></div></div>`});h+='</div>'}
+ else{h='<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">';STAGES.forEach((d,i)=>{if(d.hidden&&!unlocked(i))return;const on=cleared(d.id),hb=rec(d.id).hb>0;h+=`<div class="card${on?'':' locked'}"><h4>${d.name}</h4>${on?'<ul>'+d.concept.map(c=>'<li>'+c+'</li>').join('')+(hb?'<li style="color:var(--photon)">확장: '+HID_CONCEPT[d.id]+'</li>':'')+'</ul>':'스테이지를 클리어하면 기록된다.'}</div>`});h+='</div>'}
+ $('#mapBody').innerHTML=h;
+}
+function checkReveal(){
+ let seen=[];try{seen=JSON.parse(localStorage.getItem('lsc-seen-'+me.id))||[]}catch(e){}
+ const fresh=STAGES.filter((d,i)=>d.hidden&&unlocked(i)&&!seen.includes(d.id)),won=myTitles().filter(t=>!seen.includes(t.id));if(!fresh.length&&!won.length)return;
+ try{localStorage.setItem('lsc-seen-'+me.id,JSON.stringify(seen.concat(fresh.map(d=>d.id),won.map(t=>t.id))))}catch(e){}
+ if(won.length){$('#modalBox').innerHTML=`<p class="eyebrow">히든 등급 달성</p><h2>${won.map(t=>t.name).join(' · ')}</h2>${won.map(t=>'<p>'+t.desc+'</p>').join('')}<p class="dim">등급 탭에서 확인할 수 있다.</p><div class="row"><button class="btn" type="button" data-act="close">확인</button></div>`;$('#modal').hidden=false;jingle([523,659,784,1047,1319]);return}
+ $('#modalBox').innerHTML=`<p class="eyebrow">히든 스테이지 공개</p><h2>${fresh.map(d=>d.name).join(' · ')}</h2><p>조건을 달성해, 숨겨져 있던 스테이지가 지도에 나타났다.</p><p>기본 스테이지보다 길고 어렵다. 대신 점수가 1.5배다.</p><div class="row"><button class="btn" type="button" data-act="close">확인</button></div>`;
+ $('#modal').hidden=false;jingle([392,523,659,784,1047])}
+function goMap(){run=null;sim=null;renderMap();show('map');loadRank();checkReveal()}
+
+function setMe(r,token){me={id:r.id,token:token||r.token,st:r.st||{},badges:r.badges||[],openAll:!!r.openAll,openHidden:!!r.openHidden};try{sessionStorage.setItem('lsc-me',JSON.stringify({id:me.id,token:me.token}))}catch(e){}}
+function logout(msg){me=null;run=null;sim=null;try{sessionStorage.removeItem('lsc-me')}catch(e){}$('#inPw').value='';$('#loginMsg').textContent=msg||'';show('login');loadRank()}
+function askPw(forced){pwForced=forced;$('#pw1').value=$('#pw2').value='';$('#pwMsg').textContent='';$('#btnPwCancel').hidden=forced;$('#btnPw').textContent=forced?'변경하고 시작':'변경';$('#pwWhy').textContent=forced?'처음 로그인했다. 나만 아는 비밀번호로 바꿔야 탐사를 시작할 수 있다.':'새 비밀번호를 정한다.';show('pw')}
+$('#loginForm').addEventListener('submit',e=>{e.preventDefault();const id=$('#inId').value.trim(),pw=$('#inPw').value,m=$('#loginMsg'),b=$('#btnLogin');
+ if(!/^\d{5}$/.test(id)){m.textContent='학번 5자리를 입력하세요.';return}
+ b.disabled=true;m.textContent='확인 중…';
+ post('login',{id,pw}).then(r=>{m.textContent='';setMe(r);beep(660,.1);flush();r.mustChange?askPw(true):goMap()})
+  .catch(err=>{m.textContent=err.server?err.message.replace(/^AUTH: /,''):'서버에 연결하지 못했다. 인터넷 연결을 확인하세요.'}).finally(()=>{b.disabled=false})});
+$('#pwForm').addEventListener('submit',e=>{e.preventDefault();const a=$('#pw1').value,b=$('#pw2').value,m=$('#pwMsg'),btn=$('#btnPw');
+ if(a.length<8){m.textContent='비밀번호는 8자리 이상이어야 한다.';return}
+ if(a!==b){m.textContent='두 비밀번호가 서로 다르다.';return}
+ if(a===me.id+'!!'){m.textContent='초기 비밀번호와 다른 비밀번호를 정해야 한다.';return}
+ btn.disabled=true;m.textContent='변경 중…';
+ call('changePw',{newPw:a}).then(r=>{me.token=r.token;try{sessionStorage.setItem('lsc-me',JSON.stringify({id:me.id,token:me.token}))}catch(x){}toast('비밀번호를 변경했다');goMap()})
+  .catch(err=>{m.textContent=err.server?err.message.replace(/^AUTH: /,''):'서버에 연결하지 못했다.'}).finally(()=>{btn.disabled=false})});
+$('#btnPwCancel').addEventListener('click',goMap);
+
+/* ---------- 사이드스크롤 스테이지 ---------- */
+const gc=$('#game'),g2=gc.getContext('2d');let VW=800,VH=480,SC=1,DPR=1;
+const sc=$('#simCanvas'),s2=sc.getContext('2d');let SW=600,SH=400;
+function resize(){DPR=Math.min(window.devicePixelRatio||1,1.5);const cw=gc.clientWidth,ch=gc.clientHeight;if(cw&&ch){SC=Math.min(ch/480,cw/560);VW=cw/SC;VH=ch/SC;gc.width=cw*DPR|0;gc.height=ch*DPR|0}
+ const b=$('#simBox');if(b.clientWidth){SW=b.clientWidth;SH=b.clientHeight;sc.width=SW*DPR|0;sc.height=SH*DPR|0}}
+window.addEventListener('resize',resize);
+
+const SEG_W=370;
+function newLevel(w1){return{w1,g:w1?1000:1900,jv:w1?560:680,plats:[],pits:[],lasers:[],drones:[],photons:[],hidden:false}}
+function pickType(R,lvl,last,cnt,cap){
+ const w=[['plat',Math.max(.6,2-lvl*.25)],['pit',2],['drone',1.5],['wide',lvl>=1?1+lvl*.3:0],['laser',lvl>=2?1+lvl*.3:0],['fly',lvl>=3?.5+lvl*.25:0]].filter(a=>a[0]!==last&&!(cap&&cap[a[0]]!=null&&(cnt[a[0]]||0)>=cap[a[0]]));
+ let s=0;w.forEach(a=>s+=a[1]);let x=R()*s;for(const a of w){x-=a[1];if(x<=0)return a[0]}return'pit'}
+/* 구간 하나(폭 370)를 만든다. */
+function addSeg(lv,R,type,s,lvl,withPhoton){
+ const apex=lv.jv*lv.jv/(2*lv.g),maxH=Math.min(apex*.75,lv.w1?120:90),sp=Math.min(170,70+lvl*12);let ph;
+ if(type==='plat'){const pw=120+R()*40|0,py=55+R()*(maxH-55)|0,px=s+80+R()*30|0;lv.plats.push({x:px,y:py,w:pw});ph={x:px+pw/2,y:py+46};
+  if(lvl>=2&&R()<.6){const uy=py+maxH*.85|0;lv.plats.push({x:px+pw+26,y:uy,w:84});ph={x:px+pw+68,y:uy+46}}}
+ else if(type==='pit'){const pw=lv.w1?150+R()*50:95+R()*35,a=s+130;lv.pits.push({a,b:a+pw});ph={x:a+pw/2,y:apex*.6+24}}
+ else if(type==='wide'){const a=s+(lv.w1?35:50),b=a+(lv.w1?305:275);lv.pits.push({a,b});lv.plats.push({x:a+14,y:0,w:86,mv:{a:a+14,b:b-100,v:Math.min(130,60+lvl*8),d:1},dx:0});ph={x:(a+b)/2,y:96}}
+ else if(type==='laser'){lv.lasers.push({x:s+185,on:1.1+Math.min(lvl,8)*.05,off:1.25,ph:R()*2});ph={x:s+185,y:34}}
+ else if(type==='drone'){lv.drones.push({x:s+60,y:0,a:s+40,b:s+330,v:sp,dead:false});ph={x:s+185,y:34}}
+ else{lv.drones.push({x:s+60,y:30,a:s+40,b:s+330,v:sp*.9,fly:true,dead:false});const px=s+130;lv.plats.push({x:px,y:maxH|0,w:110});ph={x:px+55,y:maxH+46}}
+ if(withPhoton)lv.photons.push(ph)}
+function fillSegs(lv,R,lvl,x,n,fixed,phSet,off,cap){let last='';const cnt={};for(let i=0;i<n;i++){const t=fixed?fixed[i]:pickType(R,lvl,last,cnt,cap);cnt[t]=(cnt[t]||0)+1;addSeg(lv,R,t,x,lvl,phSet?phSet(off+i):false);last=t;x+=SEG_W}return x}
+const stageLvl=idx=>{const d=STAGES[idx];return d.hidden?d.lvl:d.world===1?idx-4:idx};
+function buildMain(idx){
+ const d=STAGES[idx],lv=newLevel(d.hidden?d.sky:d.world===1),lvl=stageLvl(idx),R=rng(1000+idx*77),n1=(d.segs||[7,3])[0],n2=(d.segs||[7,3])[1],N=n1+n2,phSet=i=>Math.floor((i+1)*10/N)>Math.floor(i*10/N);
+ let x=fillSegs(lv,R,lvl,400,n1,lvl===0?['plat','pit','drone','plat','pit','plat','drone']:null,phSet,0);
+ lv.station={x:x+150,done:false};lv.gateX=x+330;lv.doorX=x+490;
+ x=fillSegs(lv,R,lvl,x+650,n2,lvl===0?['plat','pit','plat']:null,phSet,n1);
+ lv.exitX=x+140;lv.L=x+300;return lv}
+function buildHidden(idx){
+ const d=STAGES[idx],lv=newLevel(d.hidden?d.sky:d.world===1),lvl=Math.min(stageLvl(idx)+3,d.hidden?12:9),R=rng(5000+idx*31);lv.hidden=true;
+ const x=fillSegs(lv,R,lvl,360,3,null,null,0,{wide:1,laser:1,fly:1});
+ lv.station={x:x+140,done:false};lv.L=x+320;return lv}
+const newPlayer=x=>({x,y:0,vx:0,vy:0,on:true,face:1,inv:0,kb:0,coy:0,ride:null,pit:null});
+const laserOn=(l,t)=>((t+l.ph)%(l.on+l.off))<l.on;
+const doorOpen=()=>run.main.station.done&&!run.hWon;
+
+function startStage(idx){const lv=buildMain(idx);
+ run={def:STAGES[idx],idx,lv,main:lv,p:newPlayer(120),pMain:null,cp:120,cam:0,got:0,hits:0,falls:0,mission:0,time:0,t:0,banner:3,near:'',gateMsg:0,parts:[],quit:0,energy:3,
+  counted:false,attemptNo:0,mainSim:null,bonus:0,hTries:0,hWon:false,hPen:0,hLeft:0,hudT:''};
+ logs=[];$('#bAct').hidden=true;show('play');paintHud()}
+function paintHud(){const r=run;if(!r)return;const h=r.lv.hidden;
+ $('#hudStage').textContent=h?'숨겨진 공간 · '+HID[r.def.id].title:stageNo(r.idx)+' '+r.def.name;
+ $('#hudPhoton').textContent=r.got;$('#hudPhBox').hidden=h;$('#hudMission').textContent=r.main.station.done?r.mission+'점':'대기';
+ $('#hudEn').textContent='●'.repeat(Math.max(0,r.energy))+'○'.repeat(3-Math.max(0,r.energy));
+ $('#hudTimeBox').className='chip'+(h?' warn':'');r.hudT=''}
+function penalty(){const r=run,p=r.p;if(r.lv.hidden)r.hPen+=10;else return false;return true}
+function hurt(){const r=run,p=r.p;if(p.inv>0)return;if(!penalty())r.hits++;r.energy--;p.inv=1.5;p.kb=.3;p.vx=p.face>0?-300:300;p.vy=300;beep(140,.2,'sawtooth',.06);
+ r.parts.push({x:p.x,y:p.y+60,vx:0,vy:40,life:1,txt:'-10'});
+ if(r.energy<=0){p.x=r.lv.hidden?120:r.cp;p.y=0;p.vx=p.vy=0;p.pit=null;p.ride=null;p.on=true;p.inv=2;p.kb=0;r.energy=3;toast('에너지가 바닥났다. 구간 처음으로 돌아간다.')}
+ paintHud()}
+function pitFall(){const r=run,p=r.p,q=p.pit;if(!penalty())r.falls++;
+ p.x=q?q.a-40:(r.lv.hidden?120:r.cp);p.y=0;p.vx=p.vy=0;p.pit=null;p.ride=null;p.on=true;p.inv=1.5;p.kb=0;
+ r.parts.push({x:p.x,y:70,vx:0,vy:40,life:1.2,txt:'-10'});toast('구덩이에 빠졌다. -10점');beep(110,.3,'sawtooth',.06)}
+
+function update(dt){
+ const r=run,lv=r.lv,p=r.p;r.t+=dt;
+ if(lv.hidden){r.hLeft-=dt;if(r.hLeft<=0){failHidden('이동 시간 초과.');return}}else{r.time+=dt;if(!r.counted&&r.time>=GRACE){countAttempt();toast('도전 '+r.attemptNo+'회째로 기록되었다. 지금 나가도 도전 횟수는 유지된다.')}}
+ if(r.banner>0)r.banner-=dt;if(r.gateMsg>0)r.gateMsg-=dt;if(p.inv>0)p.inv-=dt;
+ for(const pl of lv.plats)if(pl.mv){const m=pl.mv,ox=pl.x;pl.x+=m.v*m.d*dt;if(pl.x<m.a){pl.x=m.a;m.d=1}else if(pl.x>m.b){pl.x=m.b;m.d=-1}pl.dx=pl.x-ox}
+ if(p.ride&&p.ride.mv)p.x+=p.ride.dx;
+ const dir=(keys.right?1:0)-(keys.left?1:0);
+ if(p.kb>0)p.kb-=dt;else{p.vx+=(dir*240-p.vx)*Math.min(1,dt*14);if(dir)p.face=dir}
+ if(keys.jumpQ>0){keys.jumpQ-=dt;if(p.coy>0){p.vy=lv.jv;p.coy=0;keys.jumpQ=0;beep(520,.07,'square',.03)}}
+ p.vy-=lv.g*dt;const y0=p.y;p.x+=p.vx*dt;p.y+=p.vy*dt;p.on=false;p.ride=null;
+ if(p.y>=0)p.pit=null;else if(p.pit)p.x=clamp(p.x,p.pit.a+10,p.pit.b-10);
+ const pit=p.pit||lv.pits.find(q=>p.x>q.a+6&&p.x<q.b-6);
+ if(p.y<=0&&!pit){p.y=0;p.vy=0;p.on=true}
+ else{if(p.vy<=0)for(const pl of lv.plats)if(p.x>pl.x-10&&p.x<pl.x+pl.w+10&&y0>=pl.y&&p.y<=pl.y){p.y=pl.y;p.vy=0;p.on=true;p.ride=pl;break}
+  if(!p.on&&p.y<0&&pit)p.pit=pit}
+ if(p.on)p.coy=.09;else p.coy-=dt;
+ if(p.y<-260){pitFall();return}
+ if(lv.gateX&&!lv.station.done&&p.x>lv.gateX-18){p.x=lv.gateX-18;p.vx=0;r.gateMsg=1.6}
+ p.x=clamp(p.x,20,lv.L-20);
+ if(!lv.hidden&&r.cp<lv.station.x-70&&p.on&&p.x>lv.station.x-70)r.cp=lv.station.x-70;
+ for(const ph of lv.photons)if(!ph.got&&Math.abs(ph.x-p.x)<26&&Math.abs(ph.y-(p.y+24))<34){ph.got=true;r.got++;$('#hudPhoton').textContent=r.got;beep(880+r.got*40,.09,'triangle',.06);burst(ph.x,ph.y,C.photon)}
+ for(const d of lv.drones){if(d.dead)continue;d.x+=d.v*dt;if(d.x<d.a){d.x=d.a;d.v=Math.abs(d.v)}else if(d.x>d.b){d.x=d.b;d.v=-Math.abs(d.v)}
+  if(Math.abs(d.x-p.x)<30&&p.y<d.y+26&&p.y+48>d.y){if(p.vy<-60&&p.y>d.y+8){d.dead=true;p.vy=lv.jv*.6;burst(d.x,d.y+16,C.r);beep(200,.15,'square',.05)}else hurt()}}
+ for(const l of lv.lasers)if(laserOn(l,r.t)&&Math.abs(l.x-p.x)<16&&p.y<190)hurt();
+ if(state!=='play'||run!==r||r.lv!==lv)return;
+ let near='';if(!lv.station.done&&Math.abs(p.x-lv.station.x)<85)near='station';else if(!lv.hidden&&doorOpen()&&Math.abs(p.x-lv.doorX)<70)near='door';
+ if(near!==r.near){r.near=near;const b=$('#bAct');b.hidden=!near;b.textContent=near==='door'?'비밀 문':'조사'}
+ if(keys.act){keys.act=false;if(near==='station'){openSim(lv.hidden);return}if(near==='door'){openDoor();return}}
+ if(!lv.hidden&&lv.station.done&&Math.abs(p.x-lv.exitX)<30&&p.y<70&&p.y>=0){finishStage();return}
+ const tc=clamp(p.x-VW*.42,0,Math.max(0,lv.L-VW));r.cam+=(tc-r.cam)*Math.min(1,dt*8);
+ for(const q of r.parts){q.x+=q.vx*dt;q.y+=q.vy*dt;q.life-=dt*1.4}r.parts=r.parts.filter(q=>q.life>0);
+ const ht=lv.hidden?fmtT(Math.ceil(r.hLeft)):fmtT(r.time);if(ht!==r.hudT){r.hudT=ht;$('#hudTime').textContent=ht}
+}
+function burst(x,y,col){for(let i=0;i<10;i++){const a=i/10*TAU;run.parts.push({x,y,vx:Math.cos(a)*120,vy:Math.sin(a)*120,life:.7,col})}}
+
+const bgStars=(()=>{const R=rng(3),a=[];for(let i=0;i<110;i++)a.push([R()*1800,R(),.6+R()*1.5]);return a})();
+function render(){
+ const c=g2,r=run,lv=r.lv,p=r.p,gy=VH-100,cam=r.cam,w1=lv.w1,hid=lv.hidden,t=r.t;
+ c.setTransform(SC*DPR,0,0,SC*DPR,0,0);
+ let gr=c.createLinearGradient(0,0,0,gy);
+ if(hid){gr.addColorStop(0,'#07041a');gr.addColorStop(1,'#1a0f3a');c.fillStyle=gr;c.fillRect(0,0,VW,gy);
+  const o=-(cam*.5)%120;c.lineWidth=2;for(let x=o-240,i=0;x<VW+240;x+=120,i++){c.strokeStyle=['rgba(255,84,104,.14)','rgba(63,224,138,.14)','rgba(90,147,255,.14)'][((i+Math.floor(cam*.5/120))%3+3)%3];c.beginPath();c.moveTo(x,0);c.lineTo(x+140,gy);c.stroke()}}
+ else if(w1){gr.addColorStop(0,'#05071c');gr.addColorStop(1,'#1c1750');c.fillStyle=gr;c.fillRect(0,0,VW,gy);
+  for(const s of bgStars){const x=((s[0]-cam*.08)%1800+1800)%1800;if(x<VW){c.fillStyle='rgba(238,241,255,'+(.35+s[2]*.3)+')';c.fillRect(x,s[1]*gy*.9,s[2],s[2])}}
+  const px=VW*.72-cam*.04;glow(c,px,gy*.3,90,'190,212,255',.25);c.save();c.translate(px,gy*.3);c.rotate(-.4);c.fillStyle='rgba(190,212,255,.5)';c.beginPath();c.ellipse(0,0,70,16,0,0,TAU);c.fill();c.fillStyle='rgba(255,230,170,.8)';c.beginPath();c.ellipse(0,0,16,10,0,0,TAU);c.fill();c.restore();
+  [[.25,'#151245',70],[.5,'#1d1858',40]].forEach(m=>{c.fillStyle=m[1];c.beginPath();c.moveTo(0,gy);for(let x=0;x<=VW+20;x+=20){const xw=x+cam*m[0];c.lineTo(x,gy-(m[2]+38*Math.sin(xw*.004+m[2])+22*Math.sin(xw*.011+1)))}c.lineTo(VW+20,gy);c.fill()});
+ }else{gr.addColorStop(0,'#0b1030');gr.addColorStop(1,'#1a2158');c.fillStyle=gr;c.fillRect(0,0,VW,gy);
+  const o=-(cam*.35)%220;c.strokeStyle='rgba(90,147,255,.13)';c.lineWidth=2;for(let x=o-220;x<VW+220;x+=220){c.strokeRect(x+10,gy-250,200,240);c.strokeRect(x+30,gy-230,60,40)}
+  const o2=-(cam*.7)%380;for(let x=o2-380;x<VW+380;x+=380){const lx=x+190,g3=c.createLinearGradient(0,0,0,gy);g3.addColorStop(0,'rgba(255,212,71,.22)');g3.addColorStop(1,'rgba(255,212,71,0)');c.fillStyle=g3;c.beginPath();c.moveTo(lx-8,0);c.lineTo(lx+8,0);c.lineTo(lx+100,gy);c.lineTo(lx-100,gy);c.fill();c.fillStyle=C.photon;c.fillRect(lx-14,0,28,6)}}
+ const gcol=hid?'#22143f':w1?'#261c52':'#1f2760',lcol=hid?C.photon:w1?'#8f7bff':C.b;
+ c.fillStyle=gcol;c.fillRect(0,gy,VW,VH-gy);c.fillStyle=lcol;c.fillRect(0,gy,VW,3);
+ c.strokeStyle='rgba(238,241,255,.07)';c.lineWidth=1;c.beginPath();for(let x=-(cam%70);x<VW;x+=70){c.moveTo(x,gy+3);c.lineTo(x-24,VH)}c.stroke();
+ const X=x=>x-cam,Y=y=>gy-y;
+ for(const q of lv.pits){const x=X(q.a),w=q.b-q.a;if(x>VW||x+w<0)continue;const pg=c.createLinearGradient(0,gy,0,VH);pg.addColorStop(0,'#0a0c22');pg.addColorStop(1,'#000');c.fillStyle=pg;c.fillRect(x,gy-1,w,VH-gy+1);c.fillStyle=lcol;c.fillRect(x-3,gy,3,VH-gy);c.fillRect(x+w,gy,3,VH-gy)}
+ for(const pl of lv.plats){const x=X(pl.x);if(x>VW||x+pl.w<0)continue;
+  if(pl.mv){c.fillStyle='#3d4a1a';rr(c,x,Y(pl.y),pl.w,14,5);c.fill();c.fillStyle=C.photon;c.fillRect(x+4,Y(pl.y),pl.w-8,3);c.fillStyle=C.photon;c.beginPath();const ax=x+pl.w/2+pl.mv.d*14;c.moveTo(ax,Y(pl.y)+9);c.lineTo(ax-pl.mv.d*8,Y(pl.y)+5);c.lineTo(ax-pl.mv.d*8,Y(pl.y)+13);c.fill()}
+  else{c.fillStyle=hid?'#3a2466':w1?'#3a2f7a':'#2c3788';rr(c,x,Y(pl.y),pl.w,16,5);c.fill();c.fillStyle=hid?'#d9b8ff':w1?'#b9a8ff':'#9fc0ff';c.fillRect(x+4,Y(pl.y),pl.w-8,3)}}
+ for(const l of lv.lasers){const x=X(l.x);if(x<-30||x>VW+30)continue;const cyc=(t+l.ph)%(l.on+l.off),on=cyc<l.on,warn=!on&&cyc>l.on+l.off-.4;
+  c.fillStyle=C.hull2;c.fillRect(x-10,gy-206,20,16);c.fillRect(x-10,gy-8,20,8);
+  if(on){c.strokeStyle='rgba(255,84,104,.35)';c.lineWidth=12;c.beginPath();c.moveTo(x,gy-190);c.lineTo(x,gy-8);c.stroke();c.strokeStyle='#ff9aa6';c.lineWidth=3;c.beginPath();c.moveTo(x,gy-190);c.lineTo(x,gy-8);c.stroke()}
+  else{c.strokeStyle=warn&&Math.floor(t*16)%2?'rgba(255,84,104,.7)':'rgba(255,84,104,.18)';c.lineWidth=1.5;c.setLineDash([4,8]);c.beginPath();c.moveTo(x,gy-190);c.lineTo(x,gy-8);c.stroke();c.setLineDash([])}
+  dot(c,x,gy-198,4,on||warn?C.r:C.g)}
+ // 실험 장치
+ {const x=X(lv.station.x),d=lv.station.done,col=d?C.g:C.photon;
+  if(!d)glow(c,x,gy-70,60+Math.sin(t*4)*8,'255,212,71',.3);
+  c.fillStyle=C.hull2;c.beginPath();c.moveTo(x-30,gy);c.lineTo(x-20,gy-46);c.lineTo(x+20,gy-46);c.lineTo(x+30,gy);c.fill();
+  c.fillStyle=C.deep;rr(c,x-28,gy-96,56,48,8);c.fill();c.strokeStyle=col;c.lineWidth=3;c.stroke();
+  T(c,d?'완료':hid?'확장':'실험',x,gy-66,19,col,'center',1);T(c,hid?HID[r.def.id].title:r.def.name,x,gy-108,14,C.ink,'center',1);}
+ if(!hid){
+  {const x=X(lv.gateX),d=lv.station.done;c.fillStyle=C.hull2;c.fillRect(x-8,gy-200,16,26);c.fillRect(x-8,gy-14,16,14);
+   if(!d)for(let i=-1;i<=1;i++){c.strokeStyle='rgba(255,84,104,'+(.55+.35*Math.sin(t*20+i))+')';c.lineWidth=3;c.beginPath();c.moveTo(x+i*5,gy-174);c.lineTo(x+i*5,gy-14);c.stroke()}
+   dot(c,x,gy-188,5,d?C.g:C.r);}
+  if(lv.station.done){const x=X(lv.doorX),won=r.hWon;c.save();c.globalAlpha=won?.5:1;
+   [C.r,C.g,C.b].forEach((col,i)=>{c.strokeStyle=col;c.lineWidth=3;rr(c,x-30-i*4,gy-104-i*4+(won?0:Math.sin(t*3+i)*2),60+i*8,104+i*4,10);c.stroke()});
+   c.fillStyle='rgba(7,4,26,.85)';rr(c,x-28,gy-102,56,102,8);c.fill();c.restore();
+   T(c,won?'완료':'?',x,gy-44,won?16:30,won?C.g:C.photon,'center',1);T(c,'숨겨진 공간',x,gy-124,13,won?C.dim:C.photon,'center',1)}
+  {const x=X(lv.exitX),d=lv.station.done;c.save();c.translate(x,gy-52);c.globalAlpha=d?1:.35;for(let i=0;i<3;i++){c.strokeStyle=[C.r,C.g,C.b][i];c.lineWidth=4;c.beginPath();c.ellipse(0,0,26+i*5,48+i*5,Math.sin(t*2+i)*.12,0,TAU);c.stroke()}c.restore();if(d)glow(c,x,gy-52,60,'255,255,255',.35);T(c,'출구',x,gy-118,14,d?C.ink:C.dim,'center',1)}
+ }
+ for(const ph of lv.photons){if(ph.got)continue;const x=X(ph.x);if(x<-20||x>VW+20)continue;const y=Y(ph.y)+Math.sin(t*4+ph.x)*4;glow(c,x,y,18,'255,212,71',.6);dot(c,x,y,7,C.photon);dot(c,x-2,y-2,2.5,'#fff')}
+ for(const d of lv.drones){if(d.dead)continue;const x=X(d.x),y=gy-d.y-16+Math.sin(t*6+d.a)*2;c.fillStyle='#2a1030';rr(c,x-18,y-12,36,26,8);c.fill();c.strokeStyle=C.r;c.lineWidth=2;c.stroke();dot(c,x+(d.v>0?7:-7),y-1,5,C.r);c.fillStyle=C.r;if(d.fly){c.fillRect(x-22,y-16,44,3)}else c.fillRect(x-2,y-20,4,8)}
+ // 대원
+ {c.save();c.translate(X(p.x),Y(p.y));c.scale(p.face,1);if(p.inv>0&&Math.floor(t*14)%2)c.globalAlpha=.35;
+  const lg=c.createLinearGradient(8,0,160,0);lg.addColorStop(0,'rgba(255,212,71,.4)');lg.addColorStop(1,'rgba(255,212,71,0)');c.fillStyle=lg;c.beginPath();c.moveTo(10,-40);c.lineTo(160,-66);c.lineTo(160,-10);c.fill();
+  const sw=p.on&&Math.abs(p.vx)>30?Math.sin(t*16)*5:0;c.fillStyle='#c9cff5';c.fillRect(-9+sw,-10,7,10);c.fillRect(2-sw,-10,7,10);
+  c.fillStyle=C.b;rr(c,-17,-34,9,20,3);c.fill();c.fillStyle=C.ink;rr(c,-11,-36,22,28,6);c.fill();
+  dot(c,0,-42,12,C.ink);c.fillStyle='#10163c';c.beginPath();c.ellipse(4,-42,7,6,0,0,TAU);c.fill();dot(c,7,-44,2,C.photon);c.restore()}
+ for(const q of r.parts){c.globalAlpha=clamp(q.life,0,1);if(q.txt)T(c,q.txt,X(q.x),Y(q.y),20,C.r,'center',1);else dot(c,X(q.x),Y(q.y),3,q.col)}c.globalAlpha=1;
+ let msg='';
+ if(r.gateMsg>0)msg='차단막이 길을 막고 있다. 실험 장치를 먼저 조사하자.';
+ else if(r.near==='station')msg=hid?'조사 버튼을 눌러 확장 미션에 도전하자. 30초, 기회는 한 번이다.':'조사 버튼을 눌러 실험 장치를 가동하자.';
+ else if(r.near==='door')msg='비밀 문 버튼을 누르면 숨겨진 공간에 도전할 수 있다.';
+ else if(!hid&&lv.station.done&&p.x<lv.exitX-200)msg=doorOpen()?'차단막이 열렸다. 숨겨진 공간에 도전하거나 출구로 가자.':'오른쪽 출구로 가자.';
+ else if(!hid&&!r.counted)msg='지금 나가면 도전으로 세지 않는다. '+Math.max(1,Math.ceil(GRACE-r.time))+'초 뒤 도전 1회로 기록된다.';
+ else if(r.idx===0&&!hid&&r.t<14&&r.banner<=0)msg='광자를 모으며 오른쪽으로. 구덩이는 뛰어넘고, 드론은 피하거나 밟는다.';
+ if(msg){c.font='500 16px '+FB;const tw=c.measureText(msg).width;c.fillStyle='rgba(7,11,36,.8)';rr(c,VW/2-tw/2-16,gy-246,tw+32,34,10);c.fill();T(c,msg,VW/2,gy-224,16,C.ink,'center')}
+ if(r.banner>0){c.globalAlpha=clamp(r.banner,0,1);c.fillStyle='rgba(7,11,36,.75)';c.fillRect(0,VH*.26,VW,96);T(c,hid?'숨겨진 공간 · 20초 안에 장치까지':(r.def.hidden?'HIDDEN STAGE ':'STAGE ')+stageNo(r.idx)+' · '+r.def.place,VW/2,VH*.26+34,16,C.photon,'center');T(c,hid?HID[r.def.id].title:r.def.name,VW/2,VH*.26+76,40,C.ink,'center',1);c.globalAlpha=1}
+}
+
+/* ---------- 숨겨진 공간 ---------- */
+function openDoor(){state='modal';keys.left=keys.right=false;const n=run.hTries+1,b=hBonus(n);
+ $('#modalBox').innerHTML=`<p class="eyebrow">숨겨진 공간</p><h2>${HID[run.def.id].title}</h2><p>20초 안에 장치까지 가서, 30초 안에 확장 미션을 푼다. 답은 한 번만 낼 수 있다.</p><p>이번 판의 ${n}번째 도전이다. 성공하면 보너스 <b style="color:var(--photon)">최대 +${b}점</b>. 안에서 부딪히거나 구덩이에 빠지면 1회마다 10점씩 줄어든다.</p><p class="dim">보너스는 이 판에서 출구까지 가야 점수에 더해진다. 숨겨진 공간에 있는 동안 스테이지 시간은 멈춘다.</p><div class="row"><button class="btn" type="button" data-act="hgo">도전한다</button><button class="btn ghost" type="button" data-act="hno">돌아간다</button></div>`;
+ $('#modal').hidden=false}
+function enterHidden(){const r=run;r.hTries++;r.hPen=0;r.pMain=r.p;r.lv=buildHidden(r.idx);r.p=newPlayer(120);r.hLeft=HID_MOVE;r.energy=3;r.banner=1.5;r.cam=0;r.near='';$('#bAct').hidden=true;$('#modal').hidden=true;state='play';paintHud();beep(330,.25,'triangle',.06)}
+function leaveHidden(){const r=run;r.lv=r.main;r.p=r.pMain;r.p.vx=r.p.vy=0;r.p.inv=1;r.energy=3;r.near='';sim=null;flushLogs();$('#bAct').hidden=true;show('play');paintHud();r.cam=clamp(r.p.x-VW*.42,0,Math.max(0,r.lv.L-VW))}
+function failHidden(why){leaveHidden();toast(why+' 숨겨진 공간 도전 실패');beep(140,.3,'sawtooth',.06)}
+const hiddenGain=()=>Math.max(0,hBonus(run.hTries)-run.hPen);
+function winHidden(){const b=hiddenGain();run.bonus=b;run.hWon=true;leaveHidden();toast('숨겨진 공간 성공 +'+b+'점');jingle([523,659,784,1047])}
+
+/* ---------- 실험 장치 UI ---------- */
+function flushLogs(){if(logs.length){enqueue('log',{items:logs});logs=[]}}
+function addLog(kind,text){logs.push({stage:run.def.id,m:sim.hidden?'확장':String(sim.step+1),kind,text:String(text||'').slice(0,120)})}
+const newSim=(def,hidden)=>({def,s:def.init(),step:0,tries:0,hint:false,scores:[],solved:false,failed:false,hidden,left:HID_SOLVE});
+const GRACE=5;
+/* 도전 1회로 기록: 스테이지에 들어와 5초가 지났거나, 그 전에 실험 장치를 열었을 때 */
+function countAttempt(){const r=run;if(!r||r.counted)return;r.counted=true;const rc=myRec(r.def.id);rc.a++;r.attemptNo=rc.a;enqueue('attempt',{stage:r.def.id})}
+function openSim(hidden){
+ let resume=false;
+ if(hidden)sim=newSim(HID[run.def.id],true);
+ else{countAttempt();
+  if(run.mainSim){sim=run.mainSim;resume=true}else sim=run.mainSim=newSim(SIMS[run.def.sim],false)}
+ $('#simTitle').textContent=hidden?sim.def.title:run.def.name;$('#simTimer').hidden=!hidden;
+ const intro=$('#simIntro');intro.hidden=!hidden;intro.textContent=hidden?sim.def.intro:'';
+ show('sim');resize();enterStep(resume)}
+function enterStep(resume){const st=sim.def.steps[sim.step];
+ if(!resume){sim.tries=0;sim.hint=false;sim.solved=false;if(st.enter)st.enter(sim.s)}
+ $('#simDots').innerHTML=sim.hidden?'':sim.def.steps.map((_,i)=>'<i class="'+(i<sim.step?'done':i===sim.step?'now':'')+'"></i>').join('');
+ $('#simText').textContent=(sim.hidden?'확장 미션. ':'미션 '+(sim.step+1)+'. ')+st.text;
+ const fb=$('#simFeedback');fb.hidden=true;fb.className='';
+ if(resume&&(sim.tries||sim.hint))feedback('hint','이 미션에서 지금까지 오답 '+sim.tries+'회'+(sim.hint?', 힌트 사용':'')+'이 기록되어 있다.'+(sim.hint?' 힌트: '+st.hint:''));
+ $('#simNext').hidden=true;$('#simCheck').hidden=!!st.options;$('#simHint').hidden=sim.hidden;$('#simHint').disabled=sim.hint;$('#simExit').hidden=sim.hidden;
+ const ob=$('#simOptions');ob.innerHTML='';
+ if(st.options)st.options.forEach((o,i)=>{const b=document.createElement('button');b.type='button';b.textContent=o;b.addEventListener('click',()=>{if(sim.solved)return;if(i===st.answer){b.classList.add('right');solve()}else{b.classList.add('wrong');b.disabled=true;miss('다시 생각해 보자. 실험 장치를 조작해 확인할 수 있다.',o)}});ob.appendChild(b)});
+ buildControls();
+}
+function buildControls(){const box=$('#simControls'),s=sim.s,st=sim.def.steps[sim.step];box.innerHTML='';
+ (st.controls||sim.def.controls||[]).forEach(ct=>{const row=document.createElement('div');row.className='ctl';
+  if(ct.type==='range'){row.innerHTML=`<label for="c_${ct.key}">${ct.label}</label><output></output><input id="c_${ct.key}" type="range" min="${ct.min}" max="${ct.max}" step="${ct.step}" value="${s[ct.key]}">`;
+   const inp=row.querySelector('input'),out=row.querySelector('output'),up=()=>{out.textContent=(ct.fmt?ct.fmt(s[ct.key]):s[ct.key])+(ct.unit||'')};inp.addEventListener('input',()=>{s[ct.key]=+inp.value;up()});up()}
+  else if(ct.type==='select'){row.innerHTML=`<span class="lab">${ct.label}</span><span></span><div class="seg"></div>`;const seg=row.querySelector('.seg');
+   ct.options.forEach(o=>{const b=document.createElement('button');b.type='button';b.textContent=o.label;b.setAttribute('aria-pressed',s[ct.key]===o.v);b.addEventListener('click',()=>{s[ct.key]=o.v;seg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));beep(440,.04)});seg.appendChild(b)})}
+  else if(ct.type==='toggle'){row.innerHTML=`<span class="lab">${ct.label}</span><span></span><div class="seg"></div>`;const seg=row.querySelector('.seg');
+   ct.items.forEach(o=>{const b=document.createElement('button');b.type='button';b.className=o.cls||'';b.textContent=o.label;b.setAttribute('aria-pressed',!!s[o.key]);b.addEventListener('click',()=>{s[o.key]=s[o.key]?0:1;b.setAttribute('aria-pressed',!!s[o.key]);beep(440,.04)});seg.appendChild(b)})}
+  else if(ct.type==='btn'){row.innerHTML='<div class="seg"></div>';const b=document.createElement('button');b.type='button';b.textContent=ct.label;b.setAttribute('aria-pressed','true');b.addEventListener('click',()=>ct.action(s));row.firstChild.appendChild(b)}
+  box.appendChild(row)})}
+const simRead=()=>{const st=sim.def.steps[sim.step],f=(st&&st.read)||sim.def.read;return f?f.call(sim.def,sim.s):''};
+function feedback(cls,msg){const fb=$('#simFeedback');fb.className=cls;fb.textContent=msg;fb.hidden=false}
+function miss(msg,logText){const st=sim.def.steps[sim.step];addLog('오답',logText);beep(160,.18,'sawtooth',.05);
+ if(sim.hidden){sim.solved=true;sim.failed=true;feedback('bad','실패. '+(st.options?'':msg+' ')+st.explain);$('#simCheck').hidden=true;const n=$('#simNext');n.hidden=false;n.textContent='돌아가기';return}
+ sim.tries++;feedback('bad',msg+' (오답 '+sim.tries+'회, -'+Math.min(90,sim.tries*40)+'점)')}
+function solve(){const st=sim.def.steps[sim.step];sim.solved=true;$('#simCheck').hidden=true;$('#simHint').hidden=true;$('#simExit').hidden=true;const n=$('#simNext');n.hidden=false;
+ if(sim.hidden){feedback('good','성공! 보너스 +'+hiddenGain()+'점. '+st.explain);n.textContent='보너스 받고 돌아가기';jingle([660,880,1047]);return}
+ const pts=Math.max(10,100-40*sim.tries-(sim.hint?15:0));sim.scores.push(pts);
+ feedback('good','성공 +'+pts+'점. '+st.explain);jingle([660,880]);n.textContent=sim.step===sim.def.steps.length-1?'장치 가동':'다음 미션';
+ $('#simDots').children[sim.step].className='done'}
+$('#simCheck').addEventListener('click',()=>{if(!sim)return;const st=sim.def.steps[sim.step];if(sim.solved||!st.ok)return;if(st.ok(sim.s))solve();else miss(st.fail?st.fail(sim.s):'아직 아니다. 다시 조절해 보자.',simRead())});
+$('#simHint').addEventListener('click',()=>{if(!sim||sim.hidden||sim.hint)return;const st=sim.def.steps[sim.step];sim.hint=true;$('#simHint').disabled=true;addLog('힌트','힌트 사용');feedback('hint','힌트: '+st.hint)});
+$('#simNext').addEventListener('click',()=>{if(!sim||!sim.solved)return;
+ if(sim.hidden){sim.failed?failHidden('오답.'):winHidden();return}
+ sim.step++;
+ if(sim.step>=sim.def.steps.length){run.mission=sim.scores.reduce((a,b)=>a+b,0);run.main.station.done=true;run.near='';$('#bAct').hidden=true;sim=null;flushLogs();show('play');paintHud();toast('차단막이 열렸다');jingle([523,659,784])}
+ else enterStep(false)});
+$('#simExit').addEventListener('click',()=>{if(!sim||sim.hidden)return;sim=null;flushLogs();show('play')});
+sc.addEventListener('pointerdown',e=>{if(!sim||!sim.def.tap||sim.solved)return;const r=sc.getBoundingClientRect();sim.def.tap(sim.s,e.clientX-r.left,e.clientY-r.top,SW,SH);beep(500,.04)});
+
+/* ---------- 결과 ---------- */
+function finishStage(){
+ const r=run,id=r.def.id,time=Math.max(1,Math.round(r.time*10)/10),att=r.attemptNo||1,c=calc(id,r.mission,r.got,r.hits,r.falls,time,att,r.bonus),rc=myRec(id),rk0=rank(total()),prev=rc.clr?rc.s:null;
+ if(!rc.clr||c.score>rc.s||(c.score===rc.s&&time<rc.t))Object.assign(rc,{s:c.score,acc:c.acc,tb:c.tb,hb:r.bonus,t:time,star:c.star,ph:r.got});
+ const ta=att===1&&c.acc===400&&r.bonus===150;if(att===1){rc.fs=c.star;if(ta)rc.ta=time}
+ rc.clr=true;
+ const ctx={mission:r.mission,got:r.got,hits:r.hits,falls:r.falls,time,ta},fresh=BADGES.filter(b=>!me.badges.includes(b.id)&&b.ok(ctx));fresh.forEach(b=>me.badges.push(b.id));
+ enqueue('finish',{stage:id,mission:r.mission,photons:r.got,hits:r.hits,falls:r.falls,time,bonus:r.bonus,hTries:r.hTries,badges:fresh.map(b=>b.id)});
+ const rk1=rank(total()),ni=r.idx+1<STAGES.length&&unlocked(r.idx+1)&&(!STAGES[r.idx+1].hidden||r.def.hidden)?r.idx+1:-1,T0=r.def.hidden?3:2;
+ let h=`<p class="eyebrow">${r.def.hidden?'HIDDEN STAGE':'STAGE'} ${stageNo(r.idx)} 클리어 · ${att}번째 도전</p><h2>${r.def.name}</h2><div class="bigstars">${starStr(c.star)}</div>
+ <dl class="tally"><dt>미션 3개</dt><dd>${r.mission}</dd><dt>광자 ${r.got}/10</dt><dd>+${r.got*10}</dd><dt>충돌 ${r.hits}회 · 추락 ${r.falls}회</dt><dd>-${(r.hits+r.falls)*10}</dd>
+ <dt class="sub">정확도 점수 (최대 400)</dt><dd class="sub">${c.acc}</dd><dt>시간 보너스 (최대 200) · 소요 ${time.toFixed(1)}초</dt><dd>+${c.tb}</dd><dt>숨겨진 공간 보너스 (최대 150)</dt><dd>${r.hWon?'+'+r.bonus:r.hTries?'실패':'미도전'}</dd>
+ ${r.def.hidden?'<dt>히든 스테이지 배율</dt><dd>× 1.5</dd>':''}<dt>도전 계수 (${att}번째)</dt><dd>× ${Math.round(c.coef*100)}%</dd>
+ <dt class="sub">이번 판 점수</dt><dd class="sub tot">${c.score}</dd><dt>랭킹에 반영되는 최고 기록</dt><dd class="tot">${rc.s}</dd></dl><div class="news">`;
+ if(ta)h+=`<p>타임어택 기록 등록: ${time.toFixed(1)}초. 랭킹 탭에서 1위인지 확인하자.</p>`;
+ if(prev!=null&&c.score<=prev)h+=`<p>이 스테이지의 최고 기록 ${prev}점이 유지된다.</p>`;
+ if(c.tb===0)h+=`<p>${T0}분 안에 클리어하면 시간 보너스를 받는다. 빠를수록 크다.</p>`;
+ if(rk1>rk0)h+=`<p>등급 상승: ${RANKS[rk1][1]}</p>`;
+ fresh.forEach(b=>h+=`<p>새 뱃지 「${b.name}」 · ${b.desc}</p>`);
+ h+=`</div><p class="dim sync"></p><div class="card"><h4>오늘 확인한 개념</h4><ul>${r.def.concept.map(x=>'<li>'+x+'</li>').join('')}${r.hWon?'<li style="color:var(--photon)">확장: '+HID_CONCEPT[id]+'</li>':''}</ul></div><div class="row">`;
+ if(ni>=0)h+=`<button class="btn" type="button" data-act="next" data-i="${ni}">다음 스테이지</button>`;
+ h+=`<button class="btn ghost" type="button" data-act="retry" data-i="${r.idx}">다시 도전 (계수 ${Math.round(coefOf(att+1)*100)}%)</button><button class="btn ghost" type="button" data-act="map">지도</button></div>`;
+ $('#resBox').innerHTML=h;show('result');paintSync();jingle([523,659,784,1047]);
+}
+
+/* ---------- 입력 ---------- */
+function hold(el,on,off){el.addEventListener('pointerdown',e=>{e.preventDefault();try{el.setPointerCapture(e.pointerId)}catch(x){}el.classList.add('down');on()});
+ ['pointerup','pointercancel','lostpointercapture'].forEach(n=>el.addEventListener(n,()=>{el.classList.remove('down');if(off)off()}))}
+hold($('#bLeft'),()=>keys.left=true,()=>keys.left=false);hold($('#bRight'),()=>keys.right=true,()=>keys.right=false);
+hold($('#bJump'),()=>keys.jumpQ=.14);hold($('#bAct'),()=>keys.act=true);
+document.addEventListener('contextmenu',e=>{if(e.target.tagName!=='INPUT')e.preventDefault()});
+window.addEventListener('keydown',e=>{if(state!=='play')return;const k=e.key;if(k==='ArrowLeft'||k==='a')keys.left=true;else if(k==='ArrowRight'||k==='d')keys.right=true;else if((k===' '||k==='ArrowUp'||k==='w')&&!e.repeat){keys.jumpQ=.14;e.preventDefault()}else if(k==='e'||k==='Enter')keys.act=true});
+window.addEventListener('keyup',e=>{const k=e.key;if(k==='ArrowLeft'||k==='a')keys.left=false;else if(k==='ArrowRight'||k==='d')keys.right=false});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
+ if(a==='rank'){b.disabled=true;loadRank().then(()=>toast('랭킹을 새로 불러왔다'))}
+ else if(a==='hgo')enterHidden();
+ else if(a==='hno'){$('#modal').hidden=true;state='play'}
+ else if(a==='close')$('#modal').hidden=true;
+ else if(a==='next'||a==='retry')startStage(+b.dataset.i);
+ else if(a==='map')goMap()});
+$('#btnFull').addEventListener('click',()=>{try{const p=document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();if(p&&p.catch)p.catch(()=>toast('이 화면에서는 전체 화면을 쓸 수 없다'))}catch(e){}});
+document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b){tab=b.dataset.tab;renderMap();if(tab==='rank')loadRank()}});
+$('#mapBody').addEventListener('click',e=>{const b=e.target.closest('.stage');if(b&&!b.disabled)startStage(+b.dataset.i)});
+$('#btnLogout').addEventListener('click',()=>logout(''));
+$('#btnChangePw').addEventListener('click',()=>askPw(false));
+$('#btnQuit').addEventListener('click',()=>{const b=$('#btnQuit');if(run&&Date.now()-run.quit<2500){b.textContent='지도';flushLogs();goMap()}else if(run){run.quit=Date.now();b.textContent=run.counted?'도전 기록됨 · 한 번 더: 나가기':'한 번 더: 나가기';setTimeout(()=>{b.textContent='지도'},2500)}});
+const muteLabel=()=>{$('#btnMute').textContent=prefs.mute?'소리 끔':'소리 켬'};muteLabel();
+$('#btnMute').addEventListener('click',()=>{prefs.mute=!prefs.mute;savePrefs();muteLabel()});
+
+/* ---------- 루프·시작 ---------- */
+let last=0;
+function frame(ts){const dt=Math.min(.033,(ts-last)/1000||0);last=ts;clock+=dt;
+ if(state==='play'&&run){update(dt);if(state==='play'&&run)render()}
+ else if(state==='sim'&&sim){const d=sim.def;
+  if(sim.hidden){if(!sim.solved){sim.left-=dt;if(sim.left<=0){failHidden('미션 시간 초과.');requestAnimationFrame(frame);return}}$('#simTimer').textContent=fmtT(Math.ceil(sim.left))}
+  else run.time+=dt;
+  if(d.update)d.update(sim.s,dt);s2.setTransform(DPR,0,0,DPR,0,0);simBg(s2,SW,SH);d.draw(s2,SW,SH,sim.s,clock);$('#simRead').textContent=simRead()}
+ requestAnimationFrame(frame)}
+async function boot(){
+ $('#demoNote').hidden=!DEMO;paintRank();resize();requestAnimationFrame(frame);
+ let s=null;try{s=JSON.parse(sessionStorage.getItem('lsc-me'))}catch(e){}
+ if(s&&s.token){try{const r=await post('state',{token:s.token});setMe(r,s.token);r.mustChange?askPw(true):goMap()}catch(e){try{sessionStorage.removeItem('lsc-me')}catch(x){}}}
+ loadRank();flush()}
+boot();
+
+})();
+</script>
+</body>
+</html>
