@@ -264,7 +264,7 @@ img{max-width:100%}
         </div>
         <form class="form" id="loginForm" autocomplete="off">
           <div class="field"><label for="inId">학번 (5자리)</label><input id="inId" type="text" inputmode="numeric" maxlength="5" placeholder="예: 20101"></div>
-          <div class="field"><label for="inPw">비밀번호</label><input id="inPw" type="password" maxlength="40" placeholder="처음에는 학번+!!"></div>
+          <div class="field"><label for="inPw">비밀번호</label><input id="inPw" type="password" maxlength="40" placeholder="처음에는 학번!!"></div>
           <p class="msg" id="loginMsg"></p>
           <div class="row">
             <button class="btn" id="btnLogin" type="submit">로그인</button>
@@ -466,28 +466,35 @@ function post(action,data){
  data=Object.assign({action},data);
  const fail=m=>Object.assign(new Error(m),{server:true});
  if(DEMO)return new Promise((res,rej)=>setTimeout(()=>{const r=demoApi(action,data);r.ok?res(r):rej(fail(r.err))},120));
- const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),25000);
+ const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),40000);
+ /* server:true = 서버가 거절(다시 보내도 소용없음), busy:true = 서버 혼잡·일시 오류(다시 보냄), 둘 다 아니면 연결 문제(다시 보냄) */
  return fetch(API_URL,{method:'POST',body:JSON.stringify(data),signal:ctl.signal,redirect:'follow'}).then(r=>r.json())
-  .then(j=>{if(!j||!j.ok)throw fail((j&&j.err)||'서버 오류');return j}).finally(()=>clearTimeout(tm))}
+  .then(j=>{if(!j||!j.ok){const e=new Error((j&&j.err)||'서버 오류');if(j&&j.retry)e.busy=true;else e.server=true;throw e}return j}).finally(()=>clearTimeout(tm))}
 const call=(action,data)=>post(action,Object.assign({token:me&&me.token},data));
 
 /* 보낼 기록 대기열: 연결이 끊겨도 보관했다가 순서대로 다시 보낸다 */
 let queue=[];try{queue=JSON.parse(localStorage.getItem('lsc-q2'))||[]}catch(e){}
 const saveQ=()=>{try{localStorage.setItem('lsc-q2',JSON.stringify(queue))}catch(e){}};
-let flushing=false,syncErr=false;
-function enqueue(action,data){if(!me)return;queue.push({action,data:Object.assign({token:me.token},data)});saveQ();flush()}
+let flushing=false,syncErr=false,syncBusy=false,retryT=0;
+const newRid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,10);
+/* rid: 같은 기록을 다시 보내도 서버가 한 번만 처리하도록 붙이는 고유 번호 */
+function enqueue(action,data){if(!me)return;queue.push({action,data:Object.assign({token:me.token,rid:newRid()},data)});saveQ();flush()}
 async function flush(){
  if(flushing)return;flushing=true;paintSync();
  while(queue.length){const it=queue[0];
-  try{const r=await post(it.action,it.data);syncErr=false;
-   if(me&&it.data.token===me.token){
+  try{const r=await post(it.action,it.data);syncErr=false;syncBusy=false;
+   if(me&&it.data.token===me.token&&!r.dup){
     if(r.badges){const got=TITLES.filter(t=>r.badges.includes(t.id)&&!me.badges.includes(t.id));me.badges=[...new Set(me.badges.concat(r.badges))];got.forEach(t=>toast('히든 등급 달성: '+t.name))}
     if(queue.length===1){if(r.rec&&r.stage)me.st[r.stage]=r.rec;if(it.action==='finish')setTimeout(()=>{loadRank();if(state==='map')renderMap()},400)}}}
-  catch(e){if(!e.server){syncErr=true;break}}
+  catch(e){
+   if(!e.server){   // 연결 문제는 끝까지, 서버 혼잡은 60번까지 다시 보낸다
+    if(e.busy)it.n=(it.n||0)+1;
+    if(!e.busy||it.n<60){syncErr=!e.busy;syncBusy=!!e.busy;saveQ();clearTimeout(retryT);retryT=setTimeout(flush,e.busy?Math.min(20000,3000+it.n*1500):6000);break}}
+   else if(/^AUTH/.test(e.message)&&!it.re&&me&&it.data.token!==me.token&&String(it.data.token).split('.')[0]===me.id){it.re=1;it.data.token=me.token;saveQ();continue}}   // 로그인이 만료된 기록은 같은 학생의 새 로그인으로 한 번 더 보낸다
   queue.shift();saveQ()}
  flushing=false;paintSync()}
 setInterval(()=>{if(queue.length)flush()},15000);
-function paintSync(){const t=queue.length?(syncErr?'연결을 기다리는 기록 '+queue.length+'건. 연결되면 자동으로 저장된다.':'기록 저장 중…'):(DEMO?'체험 모드: 기록은 이 기기에만 저장된다.':'모든 기록이 저장되었다.');document.querySelectorAll('.sync,#syncState').forEach(e=>{e.textContent=t})}
+function paintSync(){const t=queue.length?(syncErr?'연결을 기다리는 기록 '+queue.length+'건. 연결되면 자동으로 저장된다.':syncBusy?'서버가 혼잡해 기록 '+queue.length+'건이 대기 중이다. 자동으로 다시 보낸다.':'기록 저장 중…'):(DEMO?'체험 모드: 기록은 이 기기에만 저장된다.':'모든 기록이 저장되었다.');document.querySelectorAll('.sync,#syncState').forEach(e=>{e.textContent=t})}
 
 /* ---------- 소리 ---------- */
 let AC=null;
@@ -1178,7 +1185,10 @@ function rankHtml(full){
  return h+'<p class="dim" style="margin-top:6px">랭킹은 최대 1분 간격으로 갱신된다. 동점이면 총 소요 시간이 짧은 쪽이 위다.</p>'}
 function paintMyRank(){const d=rankData;$('#mapMyRank').textContent=d&&d.me&&me?'내 순위: 전체 '+d.me.rank+'위 · 우리 반 '+d.me.classRank+'위':''}
 function paintRank(){$('#rankLogin').innerHTML=rankHtml(false);if(state==='map'){paintMyRank();if(tab==='rank')$('#mapBody').innerHTML='<div class="rankcard">'+rankHtml(true)+'</div>'}}
-function loadRank(){return call('rank',{}).then(d=>{rankData=d;paintRank()}).catch(()=>{})}
+let rankAt=0,rankP=null;
+/* 랭킹은 20초 안에 다시 요청하지 않는다(새로 고침 버튼은 예외). 서버도 1분에 한 번만 다시 계산한다. */
+function loadRank(force){if(rankP)return rankP;if(!force&&rankData&&Date.now()-rankAt<20000){paintRank();return Promise.resolve()}
+ rankP=call('rank',{}).then(d=>{rankData=d;rankAt=Date.now();paintRank()}).catch(()=>{}).then(()=>{rankP=null});return rankP}
 
 function gradeHtml(){
  const x=total(),cur=rank(x),G='<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">';
@@ -1224,21 +1234,21 @@ function checkReveal(){
  $('#modal').hidden=false;jingle([392,523,659,784,1047])}
 function goMap(){run=null;sim=null;renderMap();show('map');loadRank();checkReveal()}
 
-function setMe(r,token){me={id:r.id,token:token||r.token,st:r.st||{},badges:r.badges||[],openAll:!!r.openAll,openHidden:!!r.openHidden};try{sessionStorage.setItem('lsc-me',JSON.stringify({id:me.id,token:me.token}))}catch(e){}}
-function logout(msg){me=null;run=null;sim=null;try{sessionStorage.removeItem('lsc-me')}catch(e){}$('#inPw').value='';$('#loginMsg').textContent=msg||'';show('login');loadRank()}
+function setMe(r,token){rankAt=0;me={id:r.id,token:token||r.token,st:r.st||{},badges:r.badges||[],openAll:!!r.openAll,openHidden:!!r.openHidden};try{sessionStorage.setItem('lsc-me',JSON.stringify({id:me.id,token:me.token}))}catch(e){}}
+function logout(msg){rankAt=0;me=null;run=null;sim=null;try{sessionStorage.removeItem('lsc-me')}catch(e){}$('#inPw').value='';$('#loginMsg').textContent=msg||'';show('login');loadRank()}
 function askPw(forced){pwForced=forced;$('#pw1').value=$('#pw2').value='';$('#pwMsg').textContent='';$('#btnPwCancel').hidden=forced;$('#btnPw').textContent=forced?'변경하고 시작':'변경';$('#pwWhy').textContent=forced?'처음 로그인했다. 나만 아는 비밀번호로 바꿔야 탐사를 시작할 수 있다.':'새 비밀번호를 정한다.';show('pw')}
 $('#loginForm').addEventListener('submit',e=>{e.preventDefault();const id=$('#inId').value.trim(),pw=$('#inPw').value,m=$('#loginMsg'),b=$('#btnLogin');
  if(!/^\d{5}$/.test(id)){m.textContent='학번 5자리를 입력하세요.';return}
  b.disabled=true;m.textContent='확인 중…';
  post('login',{id,pw}).then(r=>{m.textContent='';setMe(r);beep(660,.1);flush();r.mustChange?askPw(true):goMap()})
-  .catch(err=>{m.textContent=err.server?err.message.replace(/^AUTH: /,''):'서버에 연결하지 못했다. 인터넷 연결을 확인하세요.'}).finally(()=>{b.disabled=false})});
+  .catch(err=>{m.textContent=err.server?err.message.replace(/^AUTH: /,''):err.busy?'서버가 혼잡하다. 잠시 뒤 다시 눌러 주세요.':'서버에 연결하지 못했다. 인터넷 연결을 확인하세요.'}).finally(()=>{b.disabled=false})});
 $('#pwForm').addEventListener('submit',e=>{e.preventDefault();const a=$('#pw1').value,b=$('#pw2').value,m=$('#pwMsg'),btn=$('#btnPw');
  if(a.length<8){m.textContent='비밀번호는 8자리 이상이어야 한다.';return}
  if(a!==b){m.textContent='두 비밀번호가 서로 다르다.';return}
  if(a===me.id+'!!'){m.textContent='초기 비밀번호와 다른 비밀번호를 정해야 한다.';return}
  btn.disabled=true;m.textContent='변경 중…';
  call('changePw',{newPw:a}).then(r=>{me.token=r.token;try{sessionStorage.setItem('lsc-me',JSON.stringify({id:me.id,token:me.token}))}catch(x){}toast('비밀번호를 변경했다');goMap()})
-  .catch(err=>{m.textContent=err.server?err.message.replace(/^AUTH: /,''):'서버에 연결하지 못했다.'}).finally(()=>{btn.disabled=false})});
+  .catch(err=>{m.textContent=err.server?err.message.replace(/^AUTH: /,''):err.busy?'서버가 혼잡하다. 잠시 뒤 다시 눌러 주세요.':'서버에 연결하지 못했다.'}).finally(()=>{btn.disabled=false})});
 $('#btnPwCancel').addEventListener('click',goMap);
 
 /* ---------- 사이드스크롤 스테이지 ---------- */
@@ -1496,7 +1506,7 @@ document.addEventListener('contextmenu',e=>{if(e.target.tagName!=='INPUT')e.prev
 window.addEventListener('keydown',e=>{if(state!=='play')return;const k=e.key;if(k==='ArrowLeft'||k==='a')keys.left=true;else if(k==='ArrowRight'||k==='d')keys.right=true;else if((k===' '||k==='ArrowUp'||k==='w')&&!e.repeat){keys.jumpQ=.14;e.preventDefault()}else if(k==='e'||k==='Enter')keys.act=true});
 window.addEventListener('keyup',e=>{const k=e.key;if(k==='ArrowLeft'||k==='a')keys.left=false;else if(k==='ArrowRight'||k==='d')keys.right=false});
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
- if(a==='rank'){b.disabled=true;loadRank().then(()=>toast('랭킹을 새로 불러왔다'))}
+ if(a==='rank'){b.disabled=true;loadRank(true).then(()=>toast('랭킹을 새로 불러왔다'))}
  else if(a==='hgo')enterHidden();
  else if(a==='hno'){$('#modal').hidden=true;state='play'}
  else if(a==='close')$('#modal').hidden=true;
